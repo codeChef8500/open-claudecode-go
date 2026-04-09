@@ -1,80 +1,64 @@
-# Agent Engine
+# Open Claude Code Go
 
 <div align="center">
 
-**Claude Code Agentic Engine - Go Edition**
+**A production-grade Go rewrite of the Claude Code agentic engine**
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.24%2B-blue.svg)](https://golang.org)
 
-**English** | [Chinese](README_CN.md)
+**English** | [中文](README_CN.md)
 
 </div>
 
 ---
 
-## 1. Project Description
+## Overview
 
-A complete Go rewrite of the Claude Code agentic engine core, extracted from the TypeScript implementation. This project provides a powerful, extensible AI agent engine with multi-provider support, tool orchestration, and multi-agent coordination capabilities.
+Open Claude Code Go is a complete Go reimplementation of the [Claude Code](https://github.com/anthropics/claude-code) TypeScript agentic engine. It provides a powerful, extensible AI agent runtime with multi-LLM provider support, parallel tool orchestration, multi-agent coordination, and both HTTP and TUI interfaces.
 
 ## Architecture
 
-### Architecture Diagram
-
 ```mermaid
 graph TB
-    subgraph "Entry Points"
-        HTTP[HTTP Server<br/>chi + SSE]
-        CLI[CLI/TUI<br/>BubbleTea]
-        SDK[Go SDK]
+    subgraph Entry["Entry Points"]
+        HTTP["HTTP Server\nchi + SSE"]
+        CLI["CLI / TUI\nBubbleTea"]
+        SDK["Go SDK"]
     end
 
-    subgraph "Core Engine"
-        Engine[Engine<br/>Session Manager]
-        QueryLoop[Query Loop<br/>Multi-turn Context]
-        ToolExec[Tool Executor<br/>Parallel Execution]
-        Context[Context Pipeline<br/>Compaction & Prefetch]
-        TokenBudget[Token Budget<br/>Smart Truncation]
+    subgraph Core["Core Engine"]
+        Engine["Engine\nSession Manager"]
+        QueryLoop["Query Loop\nMulti-turn Context"]
+        ToolExec["Tool Executor\nParallel Execution"]
+        CtxPipeline["Context Pipeline\nCompaction & Prefetch"]
     end
 
-    subgraph "LLM Providers"
-        Factory[Provider Factory]
-        Anthropic[Anthropic API<br/>Native Support]
-        OpenAI[OpenAI Compatible<br/>MiniMax/VLLM/OpenRouter]
-        CB[Circuit Breaker]
-        RL[Rate Limiter]
-        Retry[Retry Logic]
+    subgraph Providers["LLM Providers"]
+        Factory["Provider Factory"]
+        Anthropic["Anthropic API"]
+        OpenAI["OpenAI Compatible\nMiniMax / VLLM / OpenRouter"]
     end
 
-    subgraph "Tool System"
-        Registry[Tool Registry]
-        Bash[Bash/PowerShell<br/>Sandboxed Execution]
-        FileTools[File Tools<br/>Read/Edit/Write/Glob/Grep]
-        WebTools[Web Tools<br/>Fetch/Search]
-        AgentTool[Agent Tool<br/>Sub-Agent Spawner]
-        MCP[MCP Tools<br/>External Integrations]
-        Misc[Other Tools<br/>Ask/Todo/Sleep/Cron]
+    subgraph ToolSys["Tool System"]
+        Registry["Tool Registry"]
+        Bash["Bash / PowerShell"]
+        FileTools["File Tools\nRead / Edit / Write"]
+        WebTools["Web Tools\nFetch / Search"]
+        AgentTool["Agent Tool\nSub-Agent Spawner"]
+        MCP["MCP Tools"]
     end
 
-    subgraph "Support Systems"
-        Memory[Memory System<br/>CLAUDE.md + LLM Extractor]
-        Permission[Permission System<br/>Auto/Bypass/Plan]
-        Plugin[Plugin System<br/>hashicorp/go-plugin]
-        Session[Session Storage<br/>JSONL Transcripts]
-        Hooks[Event Hooks<br/>Lifecycle Events]
-        Analytics[Analytics<br/>Session Tracking]
+    subgraph SupportSys["Support Systems"]
+        Memory["Memory System\nCLAUDE.md + LLM Extractor"]
+        Permission["Permission System\nAuto / Bypass / Plan"]
+        Plugin["Plugin System\nhashicorp/go-plugin"]
+        Session["Session Storage\nJSONL Transcripts"]
     end
 
-    subgraph "Multi-Agent"
-        Coordinator[Agent Coordinator]
-        SubAgent[Sub-Agent<br/>Task Delegation]
-        Buddy[Buddy System<br/>Mulberry32 PRNG]
-    end
-
-    subgraph "Modes"
-        AutoMode[Auto Mode<br/>Autonomous Execution]
-        Undercover[Undercover Mode<br/>Stealth Operations]
-        FastMode[Fast Mode<br/>Optimized Responses]
+    subgraph MultiAgent["Multi-Agent"]
+        Coordinator["Agent Coordinator"]
+        SubAgent["Sub-Agent"]
     end
 
     HTTP --> Engine
@@ -83,15 +67,11 @@ graph TB
 
     Engine --> QueryLoop
     QueryLoop --> ToolExec
-    QueryLoop --> Context
-    Context --> TokenBudget
+    QueryLoop --> CtxPipeline
 
     Engine --> Factory
     Factory --> Anthropic
     Factory --> OpenAI
-    Factory --> CB
-    Factory --> RL
-    Factory --> Retry
 
     ToolExec --> Registry
     Registry --> Bash
@@ -99,111 +79,116 @@ graph TB
     Registry --> WebTools
     Registry --> AgentTool
     Registry --> MCP
-    Registry --> Misc
 
     Engine --> Memory
     Engine --> Permission
     Engine --> Plugin
     Engine --> Session
-    Engine --> Hooks
-    Engine --> Analytics
 
     Engine --> Coordinator
     Coordinator --> SubAgent
-    Coordinator --> Buddy
-
-    Engine --> AutoMode
-    Engine --> Undercover
-    Engine --> FastMode
 ```
 
-### Directory Structure
+## Directory Structure
 
 ```
-agent-engine/
-├── cmd/agent-engine/          # HTTP server entry point
+open-claudecode-go/
+├── cmd/agent-engine/          # CLI entry point (HTTP server + TUI)
 ├── pkg/sdk/                   # Public Go SDK
 ├── internal/
-│   ├── engine/                # Core query loop, types, context compaction
-│   ├── provider/              # LLM provider adapters (Anthropic, OpenAI-compat)
-│   ├── tool/                  # Tool interface, registry, orchestration
-│   │   ├── bash/              # BashTool
-│   │   ├── fileread/          # Read (file viewer)
+│   ├── engine/                # Core query loop, context compaction, token budget
+│   ├── provider/              # LLM adapters: Anthropic, OpenAI-compat, circuit breaker
+│   ├── tool/                  # Tool interface, registry, and built-ins
+│   │   ├── bash/              # Bash / PowerShell execution
+│   │   ├── fileread/          # Read files
 │   │   ├── fileedit/          # Edit (find-and-replace)
-│   │   ├── filewrite/         # Write (create/overwrite)
+│   │   ├── filewrite/         # Write / create files
 │   │   ├── grep/              # Grep (ripgrep wrapper)
 │   │   ├── glob/              # Glob (doublestar)
-│   │   ├── webfetch/          # WebFetch (HTML→Markdown)
-│   │   ├── websearch/         # WebSearch
-│   │   ├── askuser/           # AskUser
-│   │   ├── todo/              # TodoWrite
-│   │   ├── sendmessage/       # SendMessage
-│   │   ├── sleep/             # Sleep
-│   │   ├── taskstop/          # TaskStop
-│   │   ├── notebookedit/      # NotebookEdit (.ipynb)
-│   │   ├── brief/             # Brief (progress summary)
-│   │   ├── cron/              # ScheduleCron
-│   │   └── agentool/          # Task (sub-agent spawner)
+│   │   ├── webfetch/          # WebFetch (HTML → Markdown)
+│   │   ├── websearch/         # Web search
+│   │   ├── askuser/           # Interactive user prompts
+│   │   ├── agentool/          # Sub-agent task spawner
+│   │   ├── notebookedit/      # Jupyter notebook editing
+│   │   ├── cron/              # Scheduled tasks
+│   │   └── mcptool/           # MCP protocol tools
 │   ├── prompt/                # 6-layer system prompt assembly + cache
-│   ├── permission/            # Permission checker + rules
-│   ├── mode/                  # Undercover, AutoMode, FastMode, SideQuery
-│   ├── skill/                 # Markdown skill loader
-│   ├── plugin/                # hashicorp/go-plugin external tools
-│   ├── buddy/                 # Companion system (Mulberry32 PRNG)
+│   ├── permission/            # Permission checker and rules
+│   ├── mode/                  # AutoMode, Undercover, FastMode, SideQuery
 │   ├── memory/                # CLAUDE.md reader + LLM memory extractor
 │   ├── session/               # JSONL transcript storage
-│   ├── command/               # Slash command registry + built-ins
 │   ├── agent/                 # Multi-agent coordinator
-│   ├── daemon/                # Long-running background process (fsnotify)
-│   ├── state/                 # AppState store + session state
+│   ├── plugin/                # hashicorp/go-plugin external tools
+│   ├── daemon/                # Background daemon (fsnotify)
 │   ├── server/                # chi HTTP server + SSE streaming
-│   └── util/                  # Errors, path, file, shell, cwd, format, env, …
+│   ├── tui/                   # Terminal UI (BubbleTea)
+│   ├── hooks/                 # Lifecycle event hooks
+│   ├── analytics/             # Session tracking
+│   └── util/                  # Shared utilities
 └── embed/prompts/             # Embedded system prompt templates
 ```
 
-## 2. Core Modules
+---
+
+## Core Modules
 
 | Module | Description |
 |--------|-------------|
-| **Engine** | Core query loop with multi-turn context and message persistence |
-| **Provider** | Multi-LLM support (Anthropic, OpenAI, MiniMax, VLLM, OpenRouter) |
-| **Tool System** | 17+ built-in tools (Bash, FileEdit, Grep, WebFetch, AskUser, etc.) |
-| **Prompt Builder** | 6-layer system prompt assembly with caching |
-| **Multi-Agent** | Sub-agent spawning and coordination framework |
-| **Memory** | CLAUDE.md reader + LLM-based memory extraction |
-| **Permission** | Flexible permission modes (auto, bypass, plan, acceptEdits) |
-| **Plugin** | External tool support via hashicorp/go-plugin |
-| **TUI** | Interactive terminal UI with BubbleTea framework |
-| **HTTP Server** | RESTful API with SSE streaming support |
+| **Engine** | Multi-turn query loop with context compaction and token budget management |
+| **Provider** | Anthropic native + OpenAI-compatible adapters with circuit breaker and rate limiting |
+| **Tool System** | 20+ built-in tools with parallel execution support |
+| **Prompt Builder** | 6-layer system prompt assembly with prompt caching |
+| **Multi-Agent** | Sub-agent spawning, coordination, and task delegation |
+| **Memory** | `CLAUDE.md` project memory + LLM-based memory extraction |
+| **Permission** | Per-tool permission modes: `auto`, `bypass`, `plan`, `acceptEdits` |
+| **Plugin** | External tool plugins via `hashicorp/go-plugin` (gRPC) |
+| **TUI** | Full-featured interactive terminal UI built with BubbleTea |
+| **HTTP Server** | RESTful API with SSE streaming via chi router |
 
 ---
 
-## 3. Quick Start
+## Quick Start
 
-### Installation
+### Prerequisites
+
+- Go 1.24+
+- An API key for Anthropic or any OpenAI-compatible provider
+
+### Build & Run
 
 ```bash
-# Clone the repository
 git clone https://github.com/wall-ai/agent-engine.git
 cd agent-engine
 
-# Set your API key
+# Build
+make build
+
+# Run as HTTP server
+./bin/agent-engine serve
+
+# Run interactive TUI
+./bin/agent-engine
+```
+
+### Environment Variables
+
+```bash
+# Anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
-# Or use OpenAI-compatible APIs
+
+# OpenAI-compatible (MiniMax, VLLM, OpenRouter, etc.)
 export AGENT_ENGINE_PROVIDER=openai
 export AGENT_ENGINE_API_KEY=sk-...
 export AGENT_ENGINE_BASE_URL=https://api.openai.com/v1
-
-# Build and run
-make build
-./bin/agent-engine serve
+export AGENT_ENGINE_MODEL=gpt-4o
 ```
+
+---
 
 ## HTTP API
 
-### API Endpoints
+### Create a Session
 
-#### Create a Session
 ```bash
 curl -X POST http://localhost:8080/api/v1/sessions \
   -H 'Content-Type: application/json' \
@@ -211,22 +196,33 @@ curl -X POST http://localhost:8080/api/v1/sessions \
 # → {"session_id":"<uuid>"}
 ```
 
-#### Send a Message (Streaming)
+### Send a Message (Streaming SSE)
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/sessions/<id>/messages \
   -H 'Content-Type: application/json' \
-  -d '{"text":"Explain this codebase","stream":true}'
+  -d '{"text": "Explain this codebase", "stream": true}'
 ```
 
-#### Delete a Session
+### Delete a Session
+
 ```bash
 curl -X DELETE http://localhost:8080/api/v1/sessions/<id>
 ```
 
+---
+
 ## Go SDK
 
 ```go
-import "github.com/wall-ai/agent-engine/pkg/sdk"
+import (
+    "context"
+    "fmt"
+    "os"
+
+    "github.com/wall-ai/agent-engine/internal/engine"
+    "github.com/wall-ai/agent-engine/pkg/sdk"
+)
 
 eng, err := sdk.New(
     sdk.WithWorkDir("/my/project"),
@@ -238,8 +234,7 @@ if err != nil {
 }
 defer eng.Close()
 
-ctx := context.Background()
-events := eng.SubmitMessage(ctx, "Refactor the auth module")
+events := eng.SubmitMessage(context.Background(), "Refactor the auth module")
 for ev := range events {
     if ev.Type == engine.EventTextDelta {
         fmt.Print(ev.Text)
@@ -247,30 +242,31 @@ for ev := range events {
 }
 ```
 
-### Configuration
+### SDK Configuration Options
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `provider` | `anthropic` | LLM provider (anthropic/openai) |
-| `model` | `claude-sonnet-4-5` | Model name |
-| `max_tokens` | `8192` | Maximum output tokens |
-| `http_port` | `8080` | HTTP listen port |
-| `auto_mode` | `false` | Enable Auto Mode |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `WithWorkDir(path)` | required | Working directory for the session |
+| `WithAPIKey(key)` | `$ANTHROPIC_API_KEY` | LLM provider API key |
+| `WithModel(name)` | `claude-sonnet-4-5` | Model identifier |
+| `WithProvider(name)` | `anthropic` | Provider: `anthropic` or `openai` |
+| `WithMaxTokens(n)` | `8192` | Maximum output tokens |
+| `WithAutoMode(bool)` | `false` | Enable autonomous execution mode |
 
 ---
 
-## 4. Acknowledgments
+## Acknowledgments
 
-This project is a Go rewrite inspired by the original [Claude Code](https://github.com/anthropics/claude-code) TypeScript implementation by Anthropic.
+This project is inspired by and based on the original [Claude Code](https://github.com/anthropics/claude-code) TypeScript implementation by Anthropic.
 
 Special thanks to:
-- **Anthropic** for the original Claude Code architecture
-- **Go community** for excellent libraries (BubbleTea, chi, hashicorp/go-plugin)
-- **All contributors** who helped improve this project
+- **Anthropic** for the original Claude Code architecture and Claude models
+- **The Go community** for excellent libraries: BubbleTea, chi, hashicorp/go-plugin
+- **All contributors** who help improve this project
 
 ---
 
-## 5. Star History
+## Star History
 
 <a href="https://www.star-history.com/#wall-ai/agent-engine&Date">
  <picture>
@@ -284,4 +280,4 @@ Special thanks to:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
