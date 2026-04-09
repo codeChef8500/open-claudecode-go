@@ -432,6 +432,11 @@ func (r *AgentRunner) executeLoop(
 		diskOut = r.diskOutput
 	}
 
+	// Seed fork parent messages into engine history for prompt cache sharing.
+	if len(initialMessages) > 0 {
+		eng.SeedHistory(initialMessages)
+	}
+
 	// Submit initial task.
 	params := engine.QueryParams{
 		Text:   task,

@@ -279,13 +279,30 @@ type SyncHookResponse struct {
 // Hook configuration (what gets loaded from settings.json)
 // ────────────────────────────────────────────────────────────────────────────
 
+// HookType identifies how a hook is executed.
+type HookType string
+
+const (
+	// HookTypeCommand executes an external shell command (default).
+	HookTypeCommand HookType = "command"
+	// HookTypePrompt uses an LLM to evaluate the hook condition.
+	HookTypePrompt HookType = "prompt"
+	// HookTypeHTTP sends the hook payload to an HTTP endpoint.
+	HookTypeHTTP HookType = "http"
+	// HookTypeAgent spawns an AI agent to handle the hook.
+	HookTypeAgent HookType = "agent"
+)
+
 // HookConfig describes a single hook entry from the configuration file.
 type HookConfig struct {
+	// Type is the hook execution type: "command" (default), "prompt", "http", "agent".
+	Type HookType `json:"type,omitempty"`
+
 	// Event is the lifecycle event this hook listens to.
 	Event HookEvent `json:"event"`
 
-	// Command is the shell command to execute.
-	Command string `json:"command"`
+	// Command is the shell command to execute (type=command).
+	Command string `json:"command,omitempty"`
 
 	// Args are additional arguments passed to the command.
 	Args []string `json:"args,omitempty"`
@@ -301,6 +318,19 @@ type HookConfig struct {
 
 	// Source identifies who registered this hook (user, project, plugin).
 	Source string `json:"source,omitempty"`
+
+	// ── Prompt hook fields (type=prompt) ──────────────────────────────
+	// PromptTemplate is the LLM prompt template for evaluating the hook.
+	// Supports {{.ToolName}}, {{.Input}}, {{.Event}} placeholders.
+	PromptTemplate string `json:"prompt_template,omitempty"`
+
+	// ── HTTP hook fields (type=http) ──────────────────────────────────
+	// URL is the HTTP endpoint to call.
+	URL string `json:"url,omitempty"`
+	// Method is the HTTP method (default POST).
+	Method string `json:"method,omitempty"`
+	// Headers are additional HTTP headers.
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 // HooksSettings is the "hooks" section of settings.json, mapping event names

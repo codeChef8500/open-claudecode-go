@@ -15,7 +15,7 @@
 
 ## 项目简介
 
-Open Claude Code Go 是 Anthropic [Claude Code](https://github.com/anthropics/claude-code) TypeScript Agentic Engine 的完整 Go 语言重写版本。提供强大、可扩展的 AI Agent 运行时，支持多 LLM 提供商、并行工具编排、多 Agent 协调，以及 HTTP 和 TUI 双接口。
+Open Claude Code Go 是 Anthropic [Claude Code](https://github.com/codeChef8500/open-claude-code/tree/main/claude-code-main/claude-code-main) TypeScript Agentic Engine 的完整 Go 语言重写版本。提供强大、可扩展的 AI Agent 运行时，支持多 LLM 提供商、并行工具编排、多 Agent 协调，以及 HTTP 和 TUI 双接口。
 
 ## 架构
 

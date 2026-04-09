@@ -1,20 +1,17 @@
 package mcp
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
 )
 
-// Client is a connection to one MCP server via stdio or SSE transport.
-// Currently only stdio is implemented; SSE support is scaffolded.
+// Client is a connection to one MCP server via any supported transport
+// (stdio, SSE, HTTP Streamable, etc.).
 type Client struct {
 	cfg          ServerConfig
 	info         ServerInfo
@@ -25,19 +22,18 @@ type Client struct {
 	state        ConnectionState
 	stateError   string
 
-	mu      sync.Mutex
-	nextID  atomic.Int64
-	pending map[int64]chan *Response
-
-	stdin  io.WriteCloser
-	stdout *bufio.Reader
-	cmd    *exec.Cmd
-	closed chan struct{}
+	mu        sync.Mutex
+	nextID    atomic.Int64
+	pending   map[int64]chan *Response
+	transport Transport
+	closed    chan struct{}
 
 	// notificationHandler is called for server-initiated notifications.
 	notificationHandler func(method string, params json.RawMessage)
 	// samplingHandler is called for sampling/createMessage requests.
 	samplingHandler func(ctx context.Context, req *Request) (*Response, error)
+	// oauthProvider is optionally set for SSE/HTTP transports that need OAuth.
+	oauthProvider *OAuthProvider
 }
 
 // NewClient creates a Client from a ServerConfig but does not connect yet.
@@ -50,37 +46,37 @@ func NewClient(cfg ServerConfig) *Client {
 	}
 }
 
-// Connect starts the server subprocess (stdio) and performs the MCP handshake.
+// SetOAuthProvider configures OAuth for HTTP-based transports.
+func (c *Client) SetOAuthProvider(p *OAuthProvider) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.oauthProvider = p
+}
+
+// Connect creates the appropriate transport and performs the MCP handshake.
 func (c *Client) Connect(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	expanded := c.cfg.ExpandEnv()
-	if expanded.Transport == TransportSSE {
-		return fmt.Errorf("mcp: SSE transport not yet implemented")
-	}
-
-	cmd := exec.CommandContext(ctx, expanded.Command, expanded.Args...)
-	cmd.Env = expanded.Env
-
-	stdinPipe, err := cmd.StdinPipe()
+	// Create transport from config.
+	tr, err := NewTransportFromConfig(&c.cfg)
 	if err != nil {
-		return fmt.Errorf("mcp %s: stdin pipe: %w", c.cfg.Name, err)
-	}
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("mcp %s: stdout pipe: %w", c.cfg.Name, err)
+		return fmt.Errorf("mcp %s: create transport: %w", c.cfg.Name, err)
 	}
 
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("mcp %s: start: %w", c.cfg.Name, err)
+	// Wrap with auth if OAuth provider is configured and transport is HTTP-based.
+	if c.oauthProvider != nil && c.cfg.URL != "" {
+		tr = NewAuthTransport(tr, c.oauthProvider, c.cfg.URL)
 	}
 
-	c.cmd = cmd
-	c.stdin = stdinPipe
-	c.stdout = bufio.NewReader(stdoutPipe)
+	if err := tr.Start(ctx); err != nil {
+		c.state = StateNeedsAuth
+		c.stateError = err.Error()
+		return fmt.Errorf("mcp %s: start transport: %w", c.cfg.Name, err)
+	}
+	c.transport = tr
 
-	// Start reader goroutine.
+	// Start reader goroutine that routes incoming messages.
 	go c.readLoop()
 
 	// Perform the initialize handshake.
@@ -127,7 +123,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Close shuts down the server subprocess.
+// Close shuts down the transport connection.
 func (c *Client) Close() error {
 	select {
 	case <-c.closed:
@@ -137,12 +133,10 @@ func (c *Client) Close() error {
 	}
 	c.mu.Lock()
 	c.state = StateDisabled
+	tr := c.transport
 	c.mu.Unlock()
-	if c.stdin != nil {
-		_ = c.stdin.Close()
-	}
-	if c.cmd != nil {
-		return c.cmd.Wait()
+	if tr != nil {
+		return tr.Close()
 	}
 	return nil
 }
@@ -156,10 +150,11 @@ func (c *Client) Reconnect(ctx context.Context) error {
 	// Close existing connection.
 	_ = c.Close()
 
-	// Reset closed channel and pending map.
+	// Reset closed channel, pending map, and transport.
 	c.mu.Lock()
 	c.closed = make(chan struct{})
 	c.pending = make(map[int64]chan *Response)
+	c.transport = nil
 	c.mu.Unlock()
 
 	return c.Connect(ctx)
@@ -366,9 +361,16 @@ func (c *Client) call(ctx context.Context, method string, params interface{}, ou
 	replyCh := make(chan *Response, 1)
 	c.mu.Lock()
 	c.pending[id] = replyCh
+	tr := c.transport
 	c.mu.Unlock()
 
-	if _, err := fmt.Fprintf(c.stdin, "%s\n", data); err != nil {
+	if tr == nil {
+		c.mu.Lock()
+		delete(c.pending, id)
+		c.mu.Unlock()
+		return fmt.Errorf("mcp %s: transport not started", c.cfg.Name)
+	}
+	if err := tr.Send(data); err != nil {
 		c.mu.Lock()
 		delete(c.pending, id)
 		c.mu.Unlock()
@@ -402,46 +404,56 @@ func (c *Client) notify(method string, params interface{}) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(c.stdin, "%s\n", data)
-	return err
+	c.mu.Lock()
+	tr := c.transport
+	c.mu.Unlock()
+	if tr == nil {
+		return fmt.Errorf("mcp %s: transport not started", c.cfg.Name)
+	}
+	return tr.Send(data)
 }
 
 func (c *Client) readLoop() {
+	c.mu.Lock()
+	tr := c.transport
+	c.mu.Unlock()
+	if tr == nil {
+		return
+	}
+	recvCh := tr.Receive()
 	for {
 		select {
 		case <-c.closed:
 			return
-		default:
-		}
-		line, err := c.stdout.ReadString('\n')
-		if err != nil {
-			if err != io.EOF {
-				slog.Debug("mcp read error", slog.String("server", c.cfg.Name), slog.Any("err", err))
+		case msg, ok := <-recvCh:
+			if !ok {
+				// Transport channel closed.
+				slog.Debug("mcp: transport receive channel closed", slog.String("server", c.cfg.Name))
+				return
 			}
-			return
-		}
-		var resp Response
-		if err := json.Unmarshal([]byte(line), &resp); err != nil {
-			slog.Debug("mcp: invalid JSON from server", slog.String("server", c.cfg.Name))
-			continue
-		}
-		if resp.ID == nil {
-			// Server notification — route to handler.
-			c.handleServerNotification(line)
-			continue
-		}
-		id, ok := parseID(resp.ID)
-		if !ok {
-			continue
-		}
-		c.mu.Lock()
-		ch, found := c.pending[id]
-		if found {
-			delete(c.pending, id)
-		}
-		c.mu.Unlock()
-		if found {
-			ch <- &resp
+			var resp Response
+			if err := json.Unmarshal(msg, &resp); err != nil {
+				slog.Debug("mcp: invalid JSON from server", slog.String("server", c.cfg.Name))
+				continue
+			}
+			if resp.ID == nil {
+				// Server notification — route to handler.
+				c.handleServerNotification(string(msg))
+				continue
+			}
+			id, ok := parseID(resp.ID)
+			if !ok {
+				continue
+			}
+			c.mu.Lock()
+			ch, found := c.pending[id]
+			if found {
+				delete(c.pending, id)
+			}
+			c.mu.Unlock()
+			if found {
+				ch <- &resp
+			}
 		}
 	}
 }
@@ -494,8 +506,11 @@ func (c *Client) handleServerNotification(rawLine string) {
 				if resp != nil {
 					data, _ := json.Marshal(resp)
 					c.mu.Lock()
-					_, _ = fmt.Fprintf(c.stdin, "%s\n", data)
+					tr := c.transport
 					c.mu.Unlock()
+					if tr != nil {
+						_ = tr.Send(data)
+					}
 				}
 			}()
 		}

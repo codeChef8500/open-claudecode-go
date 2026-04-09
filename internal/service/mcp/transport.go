@@ -8,9 +8,11 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ── Transport interface ─────────────────────────────────────────────────────
@@ -144,40 +146,78 @@ func (t *StdioTransport) readLoop() {
 	}
 }
 
-// ── SSE transport (scaffolded) ──────────────────────────────────────────────
+// ── SSE transport ───────────────────────────────────────────────────────────
 
 // SSETransport connects to an MCP server via Server-Sent Events over HTTP.
-// This is a scaffolded implementation; full SSE support requires an HTTP
-// client with long-lived connection handling.
+// Implements the MCP SSE transport specification:
+//   - GET to the SSE URL to open an event stream
+//   - Server sends an "endpoint" event with the POST URL for messages
+//   - Client POSTs JSON-RPC messages to the discovered endpoint
+//   - Server streams responses and notifications back over the SSE connection
 type SSETransport struct {
 	url     string
 	headers map[string]string
 
-	mu       sync.Mutex
-	msgCh    chan []byte
-	closed   chan struct{}
-	client   *http.Client
-	postURL  string // discovered from SSE endpoint event
+	mu      sync.Mutex
+	msgCh   chan []byte
+	closed  chan struct{}
+	client  *http.Client
+	postURL string        // discovered from SSE endpoint event
+	ready   chan struct{} // closed when endpoint is discovered
+	ctx     context.Context
+	cancel  context.CancelFunc
+	baseURL *url.URL // parsed base URL for resolving relative endpoints
 }
 
+const (
+	sseReadyTimeout   = 30 * time.Second
+	sseReconnectDelay = 2 * time.Second
+	sseMaxReconnects  = 5
+)
+
 // NewSSETransport creates an SSE transport for the given URL.
-func NewSSETransport(url string, headers map[string]string) *SSETransport {
+func NewSSETransport(rawURL string, headers map[string]string) *SSETransport {
+	parsed, _ := url.Parse(rawURL)
 	return &SSETransport{
-		url:     url,
+		url:     rawURL,
 		headers: headers,
 		msgCh:   make(chan []byte, 64),
 		closed:  make(chan struct{}),
-		client:  &http.Client{},
+		client:  &http.Client{Timeout: 0}, // no timeout — SSE is long-lived
+		ready:   make(chan struct{}),
+		baseURL: parsed,
 	}
 }
 
 // Start connects to the SSE endpoint and begins reading events.
+// Blocks until the server's endpoint event is received or timeout.
 func (t *SSETransport) Start(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.url, nil)
+	t.ctx, t.cancel = context.WithCancel(ctx)
+
+	if err := t.connectSSE(); err != nil {
+		return err
+	}
+
+	// Wait for endpoint discovery or timeout.
+	select {
+	case <-t.ready:
+		return nil
+	case <-time.After(sseReadyTimeout):
+		t.Close()
+		return fmt.Errorf("sse transport: timeout waiting for endpoint event from %s", t.url)
+	case <-ctx.Done():
+		t.Close()
+		return ctx.Err()
+	}
+}
+
+func (t *SSETransport) connectSSE() error {
+	req, err := http.NewRequestWithContext(t.ctx, http.MethodGet, t.url, nil)
 	if err != nil {
 		return fmt.Errorf("sse transport: create request: %w", err)
 	}
 	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Cache-Control", "no-cache")
 	for k, v := range t.headers {
 		req.Header.Set(k, v)
 	}
@@ -197,6 +237,13 @@ func (t *SSETransport) Start(ctx context.Context) error {
 
 // Send posts a JSON-RPC message to the server's message endpoint.
 func (t *SSETransport) Send(msg []byte) error {
+	// Wait for endpoint to be ready.
+	select {
+	case <-t.ready:
+	case <-t.closed:
+		return fmt.Errorf("sse transport: closed")
+	}
+
 	t.mu.Lock()
 	postURL := t.postURL
 	t.mu.Unlock()
@@ -238,14 +285,18 @@ func (t *SSETransport) Close() error {
 	default:
 		close(t.closed)
 	}
+	if t.cancel != nil {
+		t.cancel()
+	}
 	return nil
 }
 
 func (t *SSETransport) readSSELoop(body io.ReadCloser) {
 	defer body.Close()
-	defer close(t.msgCh)
 
 	scanner := bufio.NewScanner(body)
+	// Increase scanner buffer for large SSE payloads.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var eventType, eventData string
 
 	for scanner.Scan() {
@@ -264,6 +315,11 @@ func (t *SSETransport) readSSELoop(body io.ReadCloser) {
 			continue
 		}
 
+		// SSE comment (keep-alive ping).
+		if strings.HasPrefix(line, ":") {
+			continue
+		}
+
 		if strings.HasPrefix(line, "event: ") {
 			eventType = strings.TrimPrefix(line, "event: ")
 		} else if strings.HasPrefix(line, "data: ") {
@@ -273,8 +329,59 @@ func (t *SSETransport) readSSELoop(body io.ReadCloser) {
 			} else {
 				eventData = data
 			}
+		} else if line == "data:" {
+			// Empty data line per SSE spec.
+			if eventData != "" {
+				eventData += "\n"
+			}
 		}
 	}
+
+	if err := scanner.Err(); err != nil {
+		slog.Debug("sse transport: read error", slog.Any("err", err))
+	}
+
+	// Connection dropped — attempt reconnect if not closed.
+	select {
+	case <-t.closed:
+		return
+	default:
+	}
+	slog.Info("sse transport: connection lost, attempting reconnect")
+	for attempt := 0; attempt < sseMaxReconnects; attempt++ {
+		select {
+		case <-t.closed:
+			return
+		case <-time.After(sseReconnectDelay * time.Duration(1<<uint(attempt))):
+		}
+		if err := t.connectSSE(); err != nil {
+			slog.Warn("sse transport: reconnect failed",
+				slog.Int("attempt", attempt+1), slog.Any("err", err))
+			continue
+		}
+		slog.Info("sse transport: reconnected", slog.Int("attempt", attempt+1))
+		return // readSSELoop will be started by connectSSE
+	}
+	slog.Error("sse transport: all reconnect attempts exhausted")
+	close(t.msgCh)
+}
+
+// resolveEndpointURL resolves a potentially relative endpoint URL against
+// the SSE base URL.
+func (t *SSETransport) resolveEndpointURL(endpoint string) string {
+	if t.baseURL == nil {
+		return endpoint
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint
+	}
+	// If endpoint is already absolute, use as-is.
+	if parsed.IsAbs() {
+		return endpoint
+	}
+	// Resolve relative to the SSE URL's base.
+	return t.baseURL.ResolveReference(parsed).String()
 }
 
 func (t *SSETransport) processSSEEvent(eventType, data string) {
@@ -284,10 +391,21 @@ func (t *SSETransport) processSSEEvent(eventType, data string) {
 	switch eventType {
 	case "endpoint":
 		// Server tells us the POST endpoint for messages.
+		resolved := t.resolveEndpointURL(strings.TrimSpace(data))
 		t.mu.Lock()
-		t.postURL = data
+		wasEmpty := t.postURL == ""
+		t.postURL = resolved
 		t.mu.Unlock()
-		slog.Debug("sse transport: discovered endpoint", slog.String("url", data))
+		slog.Debug("sse transport: discovered endpoint", slog.String("url", resolved))
+		// Signal readiness on first endpoint discovery.
+		if wasEmpty {
+			select {
+			case <-t.ready:
+				// Already closed.
+			default:
+				close(t.ready)
+			}
+		}
 
 	case "message":
 		// JSON-RPC message from server.
@@ -301,11 +419,12 @@ func (t *SSETransport) processSSEEvent(eventType, data string) {
 	}
 }
 
-// ── HTTP Streamable transport (scaffolded) ──────────────────────────────────
+// ── HTTP Streamable transport ────────────────────────────────────────────────
 
 // HTTPTransport connects to an MCP server via the Streamable HTTP transport.
-// Per the MCP spec, this uses POST for sending and can receive responses via
-// SSE or direct JSON.
+// Per the MCP spec (2025-03-26), this uses POST for sending and can receive
+// responses via SSE or direct JSON. Supports session management via
+// Mcp-Session-Id header.
 type HTTPTransport struct {
 	url     string
 	headers map[string]string
@@ -334,6 +453,7 @@ func (t *HTTPTransport) Start(_ context.Context) error {
 }
 
 // Send posts a JSON-RPC message and reads the response.
+// For SSE responses, the body is read in the background.
 func (t *HTTPTransport) Send(msg []byte) error {
 	req, err := http.NewRequest(http.MethodPost, t.url, strings.NewReader(string(msg)))
 	if err != nil {
@@ -355,7 +475,6 @@ func (t *HTTPTransport) Send(msg []byte) error {
 	if err != nil {
 		return fmt.Errorf("http transport: post: %w", err)
 	}
-	defer resp.Body.Close()
 
 	// Capture session ID from response headers.
 	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
@@ -365,6 +484,7 @@ func (t *HTTPTransport) Send(msg []byte) error {
 	}
 
 	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("http transport: status %d: %s", resp.StatusCode, string(body))
 	}
@@ -372,21 +492,44 @@ func (t *HTTPTransport) Send(msg []byte) error {
 	// Read response body as JSON-RPC messages.
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "text/event-stream") {
-		// SSE response — read events.
+		// SSE response — read events in background; body is closed when done.
 		go func() {
+			defer resp.Body.Close()
 			scanner := bufio.NewScanner(resp.Body)
+			scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+			var eventData string
 			for scanner.Scan() {
+				select {
+				case <-t.closed:
+					return
+				default:
+				}
 				line := scanner.Text()
+				if line == "" {
+					// End of event — emit if valid JSON.
+					if eventData != "" && json.Valid([]byte(eventData)) {
+						t.msgCh <- []byte(eventData)
+					}
+					eventData = ""
+					continue
+				}
 				if strings.HasPrefix(line, "data: ") {
 					data := strings.TrimPrefix(line, "data: ")
-					if json.Valid([]byte(data)) {
-						t.msgCh <- []byte(data)
+					if eventData != "" {
+						eventData += "\n" + data
+					} else {
+						eventData = data
 					}
 				}
+			}
+			// Flush remaining event data.
+			if eventData != "" && json.Valid([]byte(eventData)) {
+				t.msgCh <- []byte(eventData)
 			}
 		}()
 	} else {
 		// Direct JSON response.
+		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("http transport: read body: %w", err)

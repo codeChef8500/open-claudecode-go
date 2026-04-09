@@ -221,6 +221,7 @@ const (
 	ScopeProject    ConfigScope = "project"
 	ScopeDynamic    ConfigScope = "dynamic"
 	ScopeEnterprise ConfigScope = "enterprise"
+	ScopeClaudeAI   ConfigScope = "claudeai"
 )
 
 // ScopedServerConfig is a ServerConfig annotated with its origin scope.

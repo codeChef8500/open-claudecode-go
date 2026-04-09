@@ -42,6 +42,9 @@ type Engine struct {
 
 	// Command system — intercepts slash commands before model invocation.
 	commandRegistry *command.Registry
+
+	// budgetTracker tracks token budget continuation state for "+Nk" budget requests.
+	budgetTracker *BudgetContinuationTracker
 }
 
 // New creates and initialises an Engine from the given config.
@@ -86,6 +89,14 @@ func (e *Engine) SetMemoryLoader(ml MemoryLoader) { e.memoryLoader = ml }
 // SetSessionWriter installs a SessionWriter (e.g. the session storage adapter).
 func (e *Engine) SetSessionWriter(sw SessionWriter) { e.sessionWriter = sw }
 
+// SeedHistory pre-populates the engine's conversation history.
+// Used by fork subagents to share parent conversation prefix for prompt cache hits.
+func (e *Engine) SeedHistory(msgs []*Message) {
+	e.historyMu.Lock()
+	e.history = append(e.history, msgs...)
+	e.historyMu.Unlock()
+}
+
 // persistMessage appends a message to the in-memory history and, if a
 // session writer is configured, also writes it to durable storage.
 func (e *Engine) persistMessage(msg *Message) {
@@ -100,6 +111,9 @@ func (e *Engine) persistMessage(msg *Message) {
 		slog.Warn("queryloop: session persist failed", slog.Any("err", err))
 	}
 }
+
+// SetBudgetTracker installs a BudgetContinuationTracker for token budget continuation.
+func (e *Engine) SetBudgetTracker(bt *BudgetContinuationTracker) { e.budgetTracker = bt }
 
 // SetPromptBuilder installs a SystemPromptBuilder (e.g. the prompt package adapter).
 func (e *Engine) SetPromptBuilder(pb SystemPromptBuilder) { e.promptBuilder = pb }

@@ -12,12 +12,17 @@ import (
 
 const defaultHookTimeout = 60 * time.Second
 
+// PromptEvaluator evaluates a prompt hook by sending the rendered template
+// to an LLM and parsing the response as a HookJSONOutput.
+type PromptEvaluator func(ctx context.Context, prompt string) (*HookJSONOutput, error)
+
 // Executor runs hook scripts for lifecycle events.
 // Aligned with claude-code-main's hook execution logic in hooks.ts.
 type Executor struct {
-	hooks     HooksSettings
-	cwd       string
-	sessionID string
+	hooks           HooksSettings
+	cwd             string
+	sessionID       string
+	promptEvaluator PromptEvaluator
 }
 
 // NewExecutor creates a hook executor from the given settings.
@@ -27,6 +32,11 @@ func NewExecutor(settings HooksSettings, cwd, sessionID string) *Executor {
 		cwd:       cwd,
 		sessionID: sessionID,
 	}
+}
+
+// SetPromptEvaluator sets the LLM evaluator for prompt-type hooks.
+func (e *Executor) SetPromptEvaluator(fn PromptEvaluator) {
+	e.promptEvaluator = fn
 }
 
 // HasHooksFor reports whether any hooks are registered for the given event.
@@ -132,11 +142,28 @@ func (e *Executor) RunAll(ctx context.Context, event HookEvent, input *HookInput
 	return e.RunSync(ctx, event, input)
 }
 
-// runOne executes a single hook script and parses its output.
+// runOne dispatches a single hook by type and parses its output.
 func (e *Executor) runOne(ctx context.Context, cfg HookConfig, input *HookInput) SyncHookResponse {
 	timeout := resolveTimeout(cfg)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
+	switch cfg.Type {
+	case HookTypePrompt:
+		return e.runPromptHook(ctx, cfg, input)
+	case HookTypeHTTP:
+		return runHTTPHook(ctx, cfg, input)
+	case HookTypeAgent:
+		// Agent hooks not yet implemented — fall through to command.
+		return e.runCommandHook(ctx, cfg, input)
+	default:
+		return e.runCommandHook(ctx, cfg, input)
+	}
+}
+
+// runCommandHook executes a single external command hook.
+func (e *Executor) runCommandHook(ctx context.Context, cfg HookConfig, input *HookInput) SyncHookResponse {
+	timeout := resolveTimeout(cfg)
 
 	// Serialize input to JSON for stdin.
 	inputJSON, err := json.Marshal(input)

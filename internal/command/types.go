@@ -364,4 +364,21 @@ type ExecContext struct {
 	// Services provides access to aggregated service dependencies.
 	// Commands should nil-check before use.
 	Services *CommandServices
+
+	// ── Additional fields for missing commands ──────────────────────────
+
+	// Effort is the current effort setting (low/medium/high).
+	Effort string
+	// OutputStyle is the current output verbosity (concise/normal/verbose).
+	OutputStyle string
+	// RewindFn removes the last assistant turn. Returns count of removed messages.
+	RewindFn func() (int, error)
+	// ExportFn exports the conversation in the given format. Returns file path.
+	ExportFn func(format string) (string, error)
+	// RenameFn renames the current session.
+	RenameFn func(name string) error
+	// TagFn tags the current conversation.
+	TagFn func(tag string) error
+	// ShellExecFn runs a shell command and returns output.
+	ShellExecFn func(ctx context.Context, name string, args ...string) (string, error)
 }

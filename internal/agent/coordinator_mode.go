@@ -20,6 +20,84 @@ import (
 //  4. Synthesizes results when all workers complete
 //  5. Uses a shared scratchpad directory for coordination
 
+// IsCoordinatorMode checks if coordinator mode is active.
+// Aligned with TS isCoordinatorMode().
+func IsCoordinatorMode() bool {
+	v := os.Getenv("CLAUDE_CODE_COORDINATOR_MODE")
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
+// CoordinatorSessionMode is "coordinator" or "normal".
+type CoordinatorSessionMode string
+
+const (
+	SessionModeCoordinator CoordinatorSessionMode = "coordinator"
+	SessionModeNormal      CoordinatorSessionMode = "normal"
+)
+
+// MatchSessionMode checks if the current coordinator mode matches the session's
+// stored mode. If mismatched, flips the environment variable. Returns a warning
+// message if the mode was switched, or "" if no switch was needed.
+// Aligned with TS matchSessionMode().
+func MatchSessionMode(sessionMode CoordinatorSessionMode) string {
+	if sessionMode == "" {
+		return ""
+	}
+
+	currentIsCoordinator := IsCoordinatorMode()
+	sessionIsCoordinator := sessionMode == SessionModeCoordinator
+
+	if currentIsCoordinator == sessionIsCoordinator {
+		return ""
+	}
+
+	if sessionIsCoordinator {
+		os.Setenv("CLAUDE_CODE_COORDINATOR_MODE", "1")
+	} else {
+		os.Unsetenv("CLAUDE_CODE_COORDINATOR_MODE")
+	}
+
+	slog.Info("coordinator: mode switched to match session",
+		slog.String("to", string(sessionMode)))
+
+	if sessionIsCoordinator {
+		return "Entered coordinator mode to match resumed session."
+	}
+	return "Exited coordinator mode to match resumed session."
+}
+
+// GetCoordinatorUserContext returns the worker tools context block for injection
+// into the system prompt. Returns empty map when not in coordinator mode.
+// Aligned with TS getCoordinatorUserContext().
+func GetCoordinatorUserContext(mcpClientNames []string, scratchpadDir string) map[string]string {
+	if !IsCoordinatorMode() {
+		return nil
+	}
+
+	// Standard worker tools available to spawned workers.
+	workerTools := []string{
+		"Bash", "Edit", "Glob", "Grep", "Read", "Write",
+		"MultiEdit", "NotebookEdit", "Task",
+	}
+
+	content := fmt.Sprintf("Workers spawned via the Task tool have access to these tools: %s",
+		strings.Join(workerTools, ", "))
+
+	if len(mcpClientNames) > 0 {
+		content += fmt.Sprintf("\n\nWorkers also have access to MCP tools from connected MCP servers: %s",
+			strings.Join(mcpClientNames, ", "))
+	}
+
+	if scratchpadDir != "" {
+		content += fmt.Sprintf("\n\nScratchpad directory: %s\n"+
+			"Workers can read and write here without permission prompts. "+
+			"Use this for durable cross-worker knowledge — structure files however fits the work.",
+			scratchpadDir)
+	}
+
+	return map[string]string{"workerToolsContext": content}
+}
+
 // CoordinatorConfig configures the coordinator mode.
 type CoordinatorConfig struct {
 	// MaxWorkers is the maximum number of concurrent worker agents.

@@ -38,9 +38,9 @@ func (c *ServerConfig) Validate() error {
 		if c.Command == "" {
 			return fmt.Errorf("mcp server %q: command must not be empty for stdio transport", c.Name)
 		}
-	case TransportSSE:
+	case TransportSSE, TransportSSEIDE, TransportHTTP:
 		if c.URL == "" {
-			return fmt.Errorf("mcp server %q: url must not be empty for sse transport", c.Name)
+			return fmt.Errorf("mcp server %q: url must not be empty for %s transport", c.Name, c.Transport)
 		}
 	default:
 		return fmt.Errorf("mcp server %q: unknown transport %q", c.Name, c.Transport)

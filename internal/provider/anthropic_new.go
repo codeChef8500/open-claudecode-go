@@ -23,6 +23,11 @@ const (
 type AnthropicProvider struct {
 	client anthropic.Client // value type — NewClient returns by value
 	model  string
+
+	// CacheStats tracks prompt cache hit/miss statistics across calls.
+	CacheStats CacheStats
+	// CacheBreak detects when the prompt cache is invalidated.
+	CacheBreak PromptCacheBreakDetector
 }
 
 // NewAnthropicProvider creates a new Anthropic provider.
@@ -85,7 +90,7 @@ func (p *AnthropicProvider) call(ctx context.Context, params CallParams, ch chan
 	}
 
 	var apiTools []anthropic.ToolUnionParam
-	for _, t := range params.Tools {
+	for i, t := range params.Tools {
 		schemaMap := toSchemaMap(t.InputSchema)
 		desc := t.Description
 		// The Anthropic SDK auto-sets type:"object". We extract "properties"
@@ -96,16 +101,20 @@ func (p *AnthropicProvider) call(ctx context.Context, params CallParams, ch chan
 		if req, ok := schemaMap["required"]; ok {
 			extras["required"] = req
 		}
-		apiTools = append(apiTools, anthropic.ToolUnionParam{
-			OfTool: &anthropic.ToolParam{
-				Name:        t.Name,
-				Description: anthropic.String(desc),
-				InputSchema: anthropic.ToolInputSchemaParam{
-					Properties:  props,
-					ExtraFields: extras,
-				},
+		toolParam := anthropic.ToolParam{
+			Name:        t.Name,
+			Description: anthropic.String(desc),
+			InputSchema: anthropic.ToolInputSchemaParam{
+				Properties:  props,
+				ExtraFields: extras,
 			},
-		})
+		}
+		// Place cache_control on the last tool to create a breakpoint after
+		// the tools block — aligned with TS prompt caching strategy.
+		if params.UsePromptCache && !params.SkipCacheWrite && i == len(params.Tools)-1 {
+			toolParam.CacheControl = anthropic.CacheControlEphemeralParam{}
+		}
+		apiTools = append(apiTools, anthropic.ToolUnionParam{OfTool: &toolParam})
 	}
 
 	req := anthropic.MessageNewParams{
@@ -221,6 +230,14 @@ func (p *AnthropicProvider) call(ctx context.Context, params CallParams, ch chan
 	if err := stream.Err(); err != nil {
 		return fmt.Errorf("anthropic stream: %w", err)
 	}
+
+	// Record cache stats from this call.
+	p.CacheStats.Record(
+		int(accMsg.Usage.InputTokens),
+		int(accMsg.Usage.OutputTokens),
+		int(accMsg.Usage.CacheReadInputTokens),
+		int(accMsg.Usage.CacheCreationInputTokens),
+	)
 
 	ch <- &engine.StreamEvent{Type: engine.EventDone}
 	return nil

@@ -15,7 +15,7 @@
 
 ## Overview
 
-Open Claude Code Go is a complete Go reimplementation of the [Claude Code](https://github.com/anthropics/claude-code) TypeScript agentic engine. It provides a powerful, extensible AI agent runtime with multi-LLM provider support, parallel tool orchestration, multi-agent coordination, and both HTTP and TUI interfaces.
+Open Claude Code Go is a complete Go reimplementation of the [Claude Code](https://github.com/codeChef8500/open-claude-code/tree/main/claude-code-main/claude-code-main) TypeScript agentic engine. It provides a powerful, extensible AI agent runtime with multi-LLM provider support, parallel tool orchestration, multi-agent coordination, and both HTTP and TUI interfaces.
 
 ## Architecture
 

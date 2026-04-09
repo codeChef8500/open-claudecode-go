@@ -234,9 +234,14 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 		}
 
 		toolDefs := e.toolDefsWithExtra(qdeps.ExtraTools)
+		// Apply OTK escalation override if set.
+		effectiveMaxTokens := effMaxTokens
+		if ls.maxOutputTokensOverride != nil {
+			effectiveMaxTokens = *ls.maxOutputTokensOverride
+		}
 		callParams := CallParams{
 			Model:             effModel,
-			MaxTokens:         effMaxTokens,
+			MaxTokens:         effectiveMaxTokens,
 			ThinkingBudget:    effThinking,
 			SystemPrompt:      ls.promptResult.Text,
 			SystemPromptParts: ls.promptResult.Parts,
@@ -291,8 +296,46 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 
 		// ── 9. No tool calls: model wants to stop ─────────────────
 		if len(toolCalls) == 0 {
-			// Max output tokens recovery: if the model was truncated, inject
-			// a recovery message and retry.
+			// ── 9a. Withheld error recovery chain ────────────────
+			// Check if the assistant message contains a withheld error that
+			// can be recovered from (PTL, max_output_tokens, media error).
+			withheldType := DetectWithheldError(assistantMsg)
+			if withheldType != WithheldNone {
+				recoveryCfg := RecoveryConfig{
+					Model:                  effModel,
+					ContextWindowSize:      effMaxTokens,
+					ReactiveCompactEnabled: !qcfg.DisableCompaction,
+					ContextCollapseEnabled: !qcfg.DisableCompaction,
+				}
+				var action *RecoveryAction
+				switch withheldType {
+				case WithheldPromptTooLong:
+					action = HandleWithheldPromptTooLong(ctx, ls, e.caller, recoveryCfg, out)
+				case WithheldMaxOutputTokens:
+					action = HandleWithheldMaxOutputTokens(ls, effMaxTokens)
+				case WithheldMediaSizeError:
+					action = HandleWithheldMediaSizeError(ctx, ls, e.caller, recoveryCfg, out)
+				}
+				if action != nil {
+					if action.IsFatal {
+						return action.FatalError
+					}
+					ls.messages = action.Messages
+					if action.MaxOutputTokensOverride != nil {
+						ls.maxOutputTokensOverride = action.MaxOutputTokensOverride
+					}
+					if action.Transition != nil {
+						ls.transition = action.Transition
+					}
+					if action.SystemMessage != "" {
+						emitSystemMessage(out, action.SystemMessage)
+					}
+					continue // retry with recovered state
+				}
+			}
+
+			// ── 9b. Inline max_tokens multi-turn recovery ────────
+			// Fallback for plain max_tokens without withheld error metadata.
 			if ls.stopReason == "max_tokens" && ls.maxOutputTokensRecoveryCount < maxOutputTokensRecoveryLimit {
 				ls.maxOutputTokensRecoveryCount++
 				slog.Info("queryloop: max_tokens recovery",
@@ -302,7 +345,7 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 					Role: RoleUser,
 					Content: []*ContentBlock{{
 						Type: ContentTypeText,
-						Text: "Output token limit hit. Resume directly \u2014 no apology, no recap of what you were doing. " +
+						Text: "Output token limit hit. Resume directly — no apology, no recap of what you were doing. " +
 							"Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",
 					}},
 				}
@@ -311,7 +354,39 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 				continue // retry
 			}
 
-			// Stop hooks: evaluate whether the model should really stop.
+			// ── 9c. Token budget continuation ────────────────────
+			// If the user specified a token budget, check whether to auto-continue.
+			if e.budgetTracker != nil && ls.stopReason == "end_turn" {
+				decision := CheckTokenBudgetContinuation(
+					e.budgetTracker,
+					ls.tokenBudget.OutputTokens,
+					effMaxTokens,
+					ls.stopReason,
+				)
+				if decision.ShouldContinue {
+					slog.Info("queryloop: token budget continuation",
+						slog.Int("count", decision.ContinuationCount),
+						slog.String("nudge", decision.NudgeMessage))
+					if decision.NudgeMessage != "" {
+						nudgeMsg := &Message{
+							ID:   uuid.New().String(),
+							Role: RoleUser,
+							Content: []*ContentBlock{{
+								Type: ContentTypeText,
+								Text: decision.NudgeMessage,
+							}},
+						}
+						ls.messages = append(ls.messages, nudgeMsg)
+						e.persistMessage(nudgeMsg)
+					}
+					ls.transition = &ContinueTransition{
+						Reason: ContinueTokenBudgetContinuation,
+					}
+					continue // auto-continue for budget
+				}
+			}
+
+			// ── 9d. Stop hooks ───────────────────────────────────
 			if e.hookExecutor != nil && e.hookExecutor.HasHooksFor(hooks.EventStop) && !ls.stopHookActive {
 				stopInput := &hooks.HookInput{
 					Stop: &hooks.StopInput{
@@ -328,9 +403,7 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 				}
 				stopResp := e.hookExecutor.RunSync(ctx, hooks.EventStop, stopInput)
 				if stopResp.Passed != nil && !*stopResp.Passed {
-					// Hook says don't stop — inject failure reason and retry.
 					slog.Info("queryloop: stop hook blocked", slog.String("reason", stopResp.FailureReason))
-					// Fire StopFailure hook.
 					if e.hookExecutor.HasHooksFor(hooks.EventStopFailure) {
 						e.hookExecutor.RunAsync(hooks.EventStopFailure, stopInput)
 					}
