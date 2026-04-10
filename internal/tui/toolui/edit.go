@@ -245,6 +245,49 @@ func (w *WriteToolUI) RenderResult(success bool, elapsed time.Duration) string {
 	return RenderResponseLine(w.theme.Error.Render("Write failed"), w.theme)
 }
 
+// RenderResultDetailed renders a detailed write result with line count and optional preview.
+//
+//	⎿  Wrote 42 lines to path (12ms)
+//	   │ line 1
+//	   │ line 2
+//	   │ … (+38 lines)
+func (w *WriteToolUI) RenderResultDetailed(success bool, elapsed time.Duration, lineCount int, filePath string, content string, width int, verbose bool) string {
+	if !success {
+		return RenderResponseLine(w.theme.Error.Render("Write failed"), w.theme)
+	}
+
+	var sb strings.Builder
+
+	// Summary line: "Wrote N lines to path (Xms)"
+	msg := fmt.Sprintf("Wrote %d lines", lineCount)
+	if filePath != "" {
+		msg += " to " + shortenPath(filePath)
+	}
+	msg += fmt.Sprintf(" (%s)", elapsed.Truncate(time.Millisecond))
+	sb.WriteString(RenderResponseLine(w.theme.Dim.Render(msg), w.theme))
+
+	// Content preview in verbose mode.
+	if verbose && content != "" {
+		lines := strings.Split(content, "\n")
+		maxPreview := 10
+		show := lines
+		if len(show) > maxPreview {
+			show = show[:maxPreview]
+		}
+		for _, line := range show {
+			sb.WriteString("\n")
+			sb.WriteString(w.theme.TreeConn.Render("  │ "))
+			sb.WriteString(w.theme.Output.Render(truncateLine(line, width-6)))
+		}
+		if len(lines) > maxPreview {
+			sb.WriteString("\n")
+			sb.WriteString(w.theme.Dim.Render(fmt.Sprintf("  │ … (+%d lines)", len(lines)-maxPreview)))
+		}
+	}
+
+	return sb.String()
+}
+
 // shortenPath shortens a file path for compact display.
 func shortenPath(path string) string {
 	if len(path) <= 50 {

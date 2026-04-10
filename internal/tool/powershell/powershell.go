@@ -224,14 +224,24 @@ func (t *PowerShellTool) Call(ctx context.Context, input json.RawMessage, uctx *
 		output, err := cmd.CombinedOutput()
 		text := string(output)
 
+		// Extract numeric exit code for structured display.
+		exitCode := 0
 		if err != nil {
 			if execCtx.Err() == context.DeadlineExceeded {
 				text += fmt.Sprintf("\n\n[Timed out after %dms]", timeoutMs)
-			} else if text == "" {
-				text = fmt.Sprintf("PowerShell error: %v", err)
 			} else {
-				text += fmt.Sprintf("\n\n[Exit error: %v]", err)
+				if exitErr, ok := err.(*exec.ExitError); ok {
+					exitCode = exitErr.ExitCode()
+				} else {
+					exitCode = 1
+				}
+				if text == "" {
+					text = fmt.Sprintf("PowerShell error: %v", err)
+				}
 			}
+		}
+		if exitCode != 0 {
+			text += fmt.Sprintf("\nExit code %d", exitCode)
 		}
 
 		// Track git operations.

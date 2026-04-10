@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -555,12 +556,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		// Parse exit code from output text for shell tools (Bash/PowerShell).
+		// The tool appends "Exit code N" to output but StreamEvent doesn't carry ExitCode.
+		exitCode := msg.ExitCode
+		if exitCode == 0 && (toolName == "Bash" || toolName == "bash" || toolName == "PowerShell" || toolName == "powershell") {
+			exitCode = parseExitCodeFromOutput(msg.Output)
+		}
 		a.messages = append(a.messages, ChatMessage{
 			Role:      "tool_result",
 			ToolName:  toolName,
 			Content:   msg.Output,
 			IsError:   msg.IsError,
-			ExitCode:  msg.ExitCode,
+			ExitCode:  exitCode,
 			ToolInput: toolInput,
 			Elapsed:   elapsed,
 		})
@@ -1122,6 +1129,7 @@ func (a *App) renderMessages() string {
 		}
 
 		var line string
+		isToolBlock := false
 		switch m.Role {
 		case "user":
 			// User messages: no dot prefix, just ❯ prompt
@@ -1146,6 +1154,7 @@ func (a *App) renderMessages() string {
 			line = errDot + " " + a.styles.Error.Render(m.Content)
 
 		case "tool_use":
+			isToolBlock = true
 			theme := a.buildToolUITheme()
 			dot := a.dotViewForState(m.DotState)
 			line = a.renderToolUseEnhanced(m, theme, dot)
@@ -1154,8 +1163,20 @@ func (a *App) renderMessages() string {
 			if a.permission.IsVisible() && isLastToolUse(a.messages, i) {
 				line += "\n" + connector + a.styles.Dimmed.Render("Waiting for permission…")
 			}
+			// Merge with the following tool_result — render as one visual block
+			if i+1 < len(a.messages) && a.messages[i+1].Role == "tool_result" {
+				w := a.layout.BodyWidth()
+				if w < 40 {
+					w = 80
+				}
+				resultLine := a.renderToolResultEnhanced(a.messages[i+1], theme, w)
+				line = line + "\n" + resultLine
+				i++ // skip the tool_result message
+			}
 
 		case "tool_result":
+			// Standalone tool_result (not merged above) — render normally
+			isToolBlock = true
 			theme := a.buildToolUITheme()
 			w := a.layout.BodyWidth()
 			if w < 40 {
@@ -1170,7 +1191,12 @@ func (a *App) renderMessages() string {
 			line = m.Content
 		}
 		sb.WriteString(line)
-		sb.WriteString("\n\n")
+		// Use single newline after tool blocks for tighter spacing
+		if isToolBlock {
+			sb.WriteString("\n")
+		} else {
+			sb.WriteString("\n\n")
+		}
 		i++
 	}
 	return strings.TrimRight(sb.String(), "\n")
@@ -1256,13 +1282,15 @@ func (a *App) renderToolUseEnhanced(m ChatMessage, theme toolui.ToolUITheme, dot
 		if m.DotState == 1 && m.ProgressContent != "" {
 			elapsed := time.Since(m.StartTime)
 			lines := strings.Count(m.ProgressContent, "\n") + 1
+			timeoutMs := extractTimeoutMs(m.ToolInput)
 			progress := toolui.BashProgress{
 				Output:     m.ProgressContent,
 				ElapsedSec: elapsed.Seconds(),
 				TotalLines: lines,
 				TotalBytes: int64(len(m.ProgressContent)),
+				TimeoutMs:  timeoutMs,
 			}
-			return header + "\n" + ui.RenderProgress(progress)
+			return header + "\n" + ui.RenderProgressFull(progress, a.layout.Width())
 		}
 		if m.DotState == 1 {
 			elapsed := time.Since(m.StartTime)
@@ -1273,29 +1301,29 @@ func (a *App) renderToolUseEnhanced(m ChatMessage, theme toolui.ToolUITheme, dot
 
 	case "PowerShell", "powershell":
 		cmd, _ := m.ToolInput["command"].(string)
-		line := dot + nameStyle.Render("PowerShell")
-		if cmd != "" {
-			line += " " + theme.Code.Render(truncateOutput(cmd, 100))
-		}
+		params := formatPowerShellParams(cmd)
+		header := toolui.RenderToolHeader(dot, "PowerShell", params, theme)
 		// Show streaming progress when active
 		if m.DotState == 1 && m.ProgressContent != "" {
 			elapsed := time.Since(m.StartTime)
 			lines := strings.Count(m.ProgressContent, "\n") + 1
+			timeoutMs := extractTimeoutMs(m.ToolInput)
 			progress := toolui.BashProgress{
 				Output:     m.ProgressContent,
 				ElapsedSec: elapsed.Seconds(),
 				TotalLines: lines,
 				TotalBytes: int64(len(m.ProgressContent)),
+				TimeoutMs:  timeoutMs,
 			}
 			ui := toolui.NewBashToolUI(theme)
-			return line + "\n" + ui.RenderProgress(progress)
+			return header + "\n" + ui.RenderProgressFull(progress, a.layout.Width())
 		}
 		if m.DotState == 1 {
 			elapsed := time.Since(m.StartTime)
 			running := theme.Dim.Render(fmt.Sprintf("Running… (%s)", elapsed.Truncate(time.Second)))
-			return line + "\n" + toolui.RenderResponseLine(running, theme)
+			return header + "\n" + toolui.RenderResponseLine(running, theme)
 		}
-		return line
+		return header
 
 	case "Edit", "edit", "FileEdit", "file_edit":
 		ui := toolui.NewEditToolUI(theme)
@@ -1397,6 +1425,12 @@ func (a *App) renderToolUseEnhanced(m ChatMessage, theme toolui.ToolUITheme, dot
 		return line
 
 	default:
+		// MCP tool detection: tools with "mcp__" prefix or containing "__"
+		if strings.HasPrefix(m.ToolName, "mcp__") || (strings.Contains(m.ToolName, "__") && len(m.ToolName) > 6) {
+			ui := toolui.NewMCPToolUI(theme)
+			serverName, mcpToolName := parseMCPToolName(m.ToolName)
+			return ui.RenderStart(dot, serverName, mcpToolName, m.ToolInput)
+		}
 		// Smart generic fallback: ● ToolName (key params)
 		toolName := toolUserFacingName(m.ToolName)
 		line := dot + nameStyle.Render(toolName)
@@ -1447,7 +1481,8 @@ func (a *App) renderToolResultEnhanced(m ChatMessage, theme toolui.ToolUITheme, 
 	switch m.ToolName {
 	case "Bash", "bash":
 		ui := toolui.NewBashToolUI(theme)
-		return ui.RenderResult(m.Content, m.ExitCode, m.Elapsed, width)
+		cmd, _ := m.ToolInput["command"].(string)
+		return ui.RenderResult(m.Content, m.ExitCode, m.Elapsed, width, cmd)
 
 	case "Edit", "edit", "FileEdit", "file_edit":
 		ui := toolui.NewEditToolUI(theme)
@@ -1466,11 +1501,21 @@ func (a *App) renderToolResultEnhanced(m ChatMessage, theme toolui.ToolUITheme, 
 
 	case "Write", "write", "FileWrite", "file_write":
 		ui := toolui.NewWriteToolUI(theme)
-		return ui.RenderResult(!m.IsError, m.Elapsed)
+		fp, _ := m.ToolInput["file_path"].(string)
+		lineCount := strings.Count(m.Content, "\n") + 1
+		if m.Content == "" {
+			lineCount = 0
+		}
+		return ui.RenderResultDetailed(!m.IsError, m.Elapsed, lineCount, fp, m.Content, width, false)
 
 	case "Read", "read", "FileRead", "file_read":
 		ui := toolui.NewReadToolUI(theme)
 		lineCount := strings.Count(m.Content, "\n")
+		fp, _ := m.ToolInput["file_path"].(string)
+		fileType := detectReadFileType(fp, m.Content)
+		if fileType != toolui.ReadFileText {
+			return ui.RenderResultTyped(m.Content, lineCount, m.Elapsed, width, false, fileType, len(m.Content))
+		}
 		return ui.RenderResult(m.Content, lineCount, m.Elapsed, width, false)
 
 	case "Glob", "glob":
@@ -1531,7 +1576,8 @@ func (a *App) renderToolResultEnhanced(m ChatMessage, theme toolui.ToolUITheme, 
 
 	case "PowerShell", "powershell":
 		ui := toolui.NewBashToolUI(theme)
-		return ui.RenderResult(m.Content, m.ExitCode, m.Elapsed, width)
+		cmd, _ := m.ToolInput["command"].(string)
+		return ui.RenderResult(m.Content, m.ExitCode, m.Elapsed, width, cmd)
 
 	case "TodoWrite", "todo_write":
 		ui := toolui.NewTodoToolUI(theme)
@@ -1577,6 +1623,14 @@ func (a *App) renderToolResultEnhanced(m ChatMessage, theme toolui.ToolUITheme, 
 		return renderGenericResult(connector, theme, m)
 
 	default:
+		// MCP tool detection
+		if strings.HasPrefix(m.ToolName, "mcp__") || (strings.Contains(m.ToolName, "__") && len(m.ToolName) > 6) {
+			if m.IsError {
+				return connector + theme.Error.Render(truncateToolOutput(m.Content, 5))
+			}
+			ui := toolui.NewMCPToolUI(theme)
+			return ui.RenderResult(m.Content, m.Elapsed, width, false)
+		}
 		return renderGenericResult(connector, theme, m)
 	}
 }
@@ -1841,4 +1895,107 @@ func shortenPath(p string, maxLen int) string {
 		return p
 	}
 	return "…" + p[len(p)-maxLen+1:]
+}
+
+// formatPowerShellParams formats the PowerShell command for the header parenthesized section.
+// Mirrors formatBashParams but uses no prefix (the command itself is descriptive enough).
+func formatPowerShellParams(command string) string {
+	cmd := strings.TrimSpace(command)
+	if cmd == "" {
+		return ""
+	}
+	// Collapse newlines to spaces for compact display.
+	cmd = strings.ReplaceAll(cmd, "\n", " ")
+	if len(cmd) > 160 {
+		cmd = cmd[:160] + "…"
+	}
+	return cmd
+}
+
+// parseExitCodeFromOutput extracts an exit code from shell tool output text.
+// Both Bash and PowerShell tools append "Exit code N" to their output on failure.
+func parseExitCodeFromOutput(output string) int {
+	const prefix = "Exit code "
+	idx := strings.LastIndex(output, prefix)
+	if idx < 0 {
+		return 0
+	}
+	after := output[idx+len(prefix):]
+	// Take only digits.
+	end := 0
+	for end < len(after) && after[end] >= '0' && after[end] <= '9' {
+		end++
+	}
+	if end == 0 {
+		return 0
+	}
+	code, err := strconv.Atoi(after[:end])
+	if err != nil {
+		return 0
+	}
+	return code
+}
+
+// detectReadFileType identifies the file type from path extension and content markers.
+func detectReadFileType(filePath, content string) toolui.ReadFileType {
+	lp := strings.ToLower(filePath)
+	// Image extensions
+	for _, ext := range []string{".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".ico", ".heic"} {
+		if strings.HasSuffix(lp, ext) {
+			return toolui.ReadFileImage
+		}
+	}
+	// Notebook
+	if strings.HasSuffix(lp, ".ipynb") {
+		return toolui.ReadFileNotebook
+	}
+	// PDF
+	if strings.HasSuffix(lp, ".pdf") {
+		return toolui.ReadFilePDF
+	}
+	// Unchanged marker
+	if strings.Contains(content, "file_unchanged") || strings.Contains(content, "unchanged since last read") {
+		return toolui.ReadFileUnchanged
+	}
+	return toolui.ReadFileText
+}
+
+// extractTimeoutMs extracts the timeout_ms value from a tool input map.
+func extractTimeoutMs(input map[string]interface{}) int {
+	if input == nil {
+		return 0
+	}
+	if v, ok := input["timeout_ms"]; ok {
+		switch t := v.(type) {
+		case float64:
+			return int(t)
+		case int:
+			return t
+		case int64:
+			return int(t)
+		}
+	}
+	if v, ok := input["timeout"]; ok {
+		switch t := v.(type) {
+		case float64:
+			return int(t)
+		case int:
+			return t
+		case int64:
+			return int(t)
+		}
+	}
+	return 0
+}
+
+// parseMCPToolName splits an MCP tool name like "mcp__server__tool" into
+// (serverName, toolName). Falls back to ("", fullName) if no separator found.
+func parseMCPToolName(name string) (string, string) {
+	// Strip "mcp__" prefix if present.
+	trimmed := strings.TrimPrefix(name, "mcp__")
+	// Split on first "__" to get server and tool.
+	if idx := strings.Index(trimmed, "__"); idx > 0 {
+		return trimmed[:idx], trimmed[idx+2:]
+	}
+	return "", name
 }

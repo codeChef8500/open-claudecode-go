@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -244,7 +245,12 @@ func (t *ToolUseTracker) RenderCompleted(n int) string {
 		case "Bash", "bash":
 			ui := toolui.NewBashToolUI(theme)
 			header := ui.RenderStart(dot, s.Input, false)
-			result := ui.RenderResult(s.Output, 0, elapsed, 100)
+			result := ui.RenderResult(s.Output, 0, elapsed, 100, s.Input)
+			lines = append(lines, header+"\n"+result)
+		case "PowerShell", "powershell":
+			ui := toolui.NewBashToolUI(theme)
+			header := toolui.RenderToolHeader(dot, "PowerShell", truncateInput(s.Input, 160), theme)
+			result := ui.RenderResult(s.Output, 0, elapsed, 100, s.Input)
 			lines = append(lines, header+"\n"+result)
 		case "Edit", "edit":
 			ui := toolui.NewEditToolUI(theme)
@@ -262,16 +268,103 @@ func (t *ToolUseTracker) RenderCompleted(n int) string {
 			lineCount := strings.Count(s.Output, "\n")
 			result := ui.RenderResult(s.Output, lineCount, elapsed, 100, false)
 			lines = append(lines, header+"\n"+result)
-		default:
-			header := toolui.RenderToolHeader(dot, s.ToolName, s.Input, theme)
+		case "Glob", "glob":
+			ui := toolui.NewGlobToolUI(theme)
+			header := ui.RenderStart(dot, s.Input, "", false)
+			var files []string
+			if s.Output != "" {
+				files = strings.Split(strings.TrimSpace(s.Output), "\n")
+			}
+			result := ui.RenderResult(files, elapsed, false)
+			lines = append(lines, header+"\n"+result)
+		case "Grep", "grep":
+			ui := toolui.NewGrepToolUI(theme)
+			header := ui.RenderStart(dot, s.Input, "", false)
+			numMatches := strings.Count(s.Output, "\n")
+			if s.Output != "" && numMatches == 0 {
+				numMatches = 1
+			}
+			fileCount := countUniqueFiles(s.Output)
+			result := ui.RenderResult(numMatches, fileCount, s.Output, elapsed, 100, false)
+			lines = append(lines, header+"\n"+result)
+		case "WebSearch", "web_search":
+			ui := toolui.NewWebSearchToolUI(theme)
+			header := ui.RenderStart(dot, s.Input)
+			var searchOut struct {
+				Results []struct {
+					Title string `json:"title"`
+					URL   string `json:"url"`
+				} `json:"results"`
+			}
+			var hits []toolui.SearchHitDisplay
+			if s.Output != "" {
+				if json.Unmarshal([]byte(s.Output), &searchOut) == nil {
+					for _, r := range searchOut.Results {
+						hits = append(hits, toolui.SearchHitDisplay{Title: r.Title, URL: r.URL})
+					}
+				}
+			}
+			result := ui.RenderResult(len(hits), elapsed, hits, 100)
+			lines = append(lines, header+"\n"+result)
+		case "WebFetch", "web_fetch":
+			ui := toolui.NewWebFetchToolUI(theme)
+			header := ui.RenderStart(dot, s.Input)
+			var fetchOut struct {
+				Bytes    int    `json:"bytes"`
+				Code     int    `json:"code"`
+				CodeText string `json:"codeText"`
+			}
+			if s.Output != "" {
+				_ = json.Unmarshal([]byte(s.Output), &fetchOut)
+			}
+			var result string
+			if fetchOut.Code > 0 {
+				result = ui.RenderResult(fetchOut.Bytes, fetchOut.Code, fetchOut.CodeText, elapsed)
+			} else if s.IsError {
+				result = ui.RenderResult(len(s.Output), 0, "Error", elapsed)
+			} else {
+				result = ui.RenderResult(len(s.Output), 200, "OK", elapsed)
+			}
+			lines = append(lines, header+"\n"+result)
+		case "TodoWrite", "todo_write":
+			header := toolui.RenderToolHeader(dot, "TodoWrite", "", theme)
+			msg := t.styles.Dimmed.Render(fmt.Sprintf("Updated todos (%s)", elapsed.Round(time.Millisecond)))
+			result := toolui.RenderResponseLine(msg, theme)
+			lines = append(lines, header+"\n"+result)
+		case "NotebookEdit", "notebook_edit":
+			header := toolui.RenderToolHeader(dot, "NotebookEdit", truncateInput(s.Input, 80), theme)
 			var resultMsg string
 			if s.IsError {
 				resultMsg = t.styles.Error.Render(fmt.Sprintf("Error (%s)", elapsed.Round(time.Millisecond)))
 			} else {
-				resultMsg = t.styles.Dimmed.Render(fmt.Sprintf("Done (%s)", elapsed.Round(time.Millisecond)))
+				resultMsg = t.styles.Dimmed.Render(fmt.Sprintf("Applied (%s)", elapsed.Round(time.Millisecond)))
 			}
 			result := toolui.RenderResponseLine(resultMsg, theme)
 			lines = append(lines, header+"\n"+result)
+		default:
+			// MCP tool detection
+			if strings.HasPrefix(s.ToolName, "mcp__") || (strings.Contains(s.ToolName, "__") && len(s.ToolName) > 6) {
+				ui := toolui.NewMCPToolUI(theme)
+				serverName, mcpToolName := parseMCPToolName(s.ToolName)
+				header := ui.RenderStart(dot, serverName, mcpToolName, nil)
+				var result string
+				if s.IsError {
+					result = toolui.RenderResponseLine(t.styles.Error.Render(fmt.Sprintf("Error (%s)", elapsed.Round(time.Millisecond))), theme)
+				} else {
+					result = ui.RenderResult(s.Output, elapsed, 100, false)
+				}
+				lines = append(lines, header+"\n"+result)
+			} else {
+				header := toolui.RenderToolHeader(dot, s.ToolName, s.Input, theme)
+				var resultMsg string
+				if s.IsError {
+					resultMsg = t.styles.Error.Render(fmt.Sprintf("Error (%s)", elapsed.Round(time.Millisecond)))
+				} else {
+					resultMsg = t.styles.Dimmed.Render(fmt.Sprintf("Done (%s)", elapsed.Round(time.Millisecond)))
+				}
+				result := toolui.RenderResponseLine(resultMsg, theme)
+				lines = append(lines, header+"\n"+result)
+			}
 		}
 	}
 	return strings.Join(lines, "\n")

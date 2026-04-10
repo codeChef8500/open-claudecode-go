@@ -304,7 +304,13 @@ func RenderToolResultMessage(msg RenderableMessage, opts RenderOpts) string {
 	switch name {
 	case "Bash", "bash":
 		ui := toolui.NewBashToolUI(theme)
-		return ui.RenderResult(output, msg.ExitCode, elapsed, width)
+		cmd, _ := msg.ToolInput["command"].(string)
+		return ui.RenderResult(output, msg.ExitCode, elapsed, width, cmd)
+
+	case "PowerShell", "powershell":
+		ui := toolui.NewBashToolUI(theme)
+		cmd, _ := msg.ToolInput["command"].(string)
+		return ui.RenderResult(output, msg.ExitCode, elapsed, width, cmd)
 
 	case "Edit", "edit":
 		ui := toolui.NewEditToolUI(theme)
@@ -331,12 +337,48 @@ func RenderToolResultMessage(msg RenderableMessage, opts RenderOpts) string {
 
 	case "Write", "write":
 		ui := toolui.NewWriteToolUI(theme)
-		return ui.RenderResult(!msg.IsError, elapsed)
+		fp := msg.FilePath
+		if fp == "" && msg.ToolInput != nil {
+			fp, _ = msg.ToolInput["file_path"].(string)
+		}
+		lineCount := strings.Count(output, "\n") + 1
+		if output == "" {
+			lineCount = 0
+		}
+		return ui.RenderResultDetailed(!msg.IsError, elapsed, lineCount, fp, output, width, false)
 
 	case "Read", "read":
 		ui := toolui.NewReadToolUI(theme)
 		lineCount := strings.Count(output, "\n")
 		return ui.RenderResult(output, lineCount, elapsed, width, false)
+
+	case "Glob", "glob":
+		ui := toolui.NewGlobToolUI(theme)
+		var files []string
+		if output != "" {
+			files = strings.Split(strings.TrimSpace(output), "\n")
+		}
+		return ui.RenderResult(files, elapsed, false)
+
+	case "Grep", "grep":
+		ui := toolui.NewGrepToolUI(theme)
+		numMatches := strings.Count(output, "\n")
+		if output != "" && numMatches == 0 {
+			numMatches = 1
+		}
+		fileCount := countUniqueFilesInOutput(output)
+		return ui.RenderResult(numMatches, fileCount, output, elapsed, width, false)
+
+	case "NotebookEdit", "notebook_edit":
+		connector := s.Connector.Render("  ⎿  ")
+		if msg.IsError {
+			return connector + s.Error.Render(truncateLines(output, 5))
+		}
+		resultMsg := "Applied"
+		if elapsed > 0 {
+			resultMsg += fmt.Sprintf(" (%s)", elapsed.Truncate(time.Millisecond))
+		}
+		return toolui.RenderResponseLine(s.Dim.Render(resultMsg), theme)
 
 	case "WebSearch", "web_search":
 		ui := toolui.NewWebSearchToolUI(theme)
@@ -387,6 +429,15 @@ func RenderToolResultMessage(msg RenderableMessage, opts RenderOpts) string {
 		return connector + s.Dim.Render(truncateLines(output, 3))
 
 	default:
+		// MCP tool detection
+		if strings.HasPrefix(name, "mcp__") || (strings.Contains(name, "__") && len(name) > 6) {
+			connector := s.Connector.Render("  ⎿  ")
+			if msg.IsError {
+				return connector + s.Error.Render(truncateLines(output, 5))
+			}
+			ui := toolui.NewMCPToolUI(theme)
+			return ui.RenderResult(output, elapsed, width, false)
+		}
 		// Generic fallback
 		connector := s.Connector.Render("  ⎿  ")
 		if msg.IsError {
@@ -585,6 +636,23 @@ func truncateLine(s string, maxLen int) string {
 		return s[:maxLen] + "…"
 	}
 	return s
+}
+
+// countUniqueFilesInOutput estimates unique file paths in grep-like output.
+func countUniqueFilesInOutput(output string) int {
+	if output == "" {
+		return 0
+	}
+	seen := make(map[string]bool)
+	for _, line := range strings.Split(output, "\n") {
+		if idx := strings.Index(line, ":"); idx > 0 {
+			seen[line[:idx]] = true
+		}
+	}
+	if len(seen) == 0 {
+		return 1
+	}
+	return len(seen)
 }
 
 // truncateLines shortens multi-line output to maxLines.

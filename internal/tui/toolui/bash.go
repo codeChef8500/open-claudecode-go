@@ -47,47 +47,73 @@ func (b *BashToolUI) RenderSedAsEdit(dotView, filePath string) string {
 	return RenderToolHeader(dotView, "Bash", filePath, b.theme)
 }
 
-// RenderResult renders bash tool output with ⎿ connector:
+// RenderResult renders bash tool output with ⎿ connector.
+// command is the original shell command (used for empty-output hinting and
+// exit-code interpretation); pass "" if unavailable.
 //
-//	⎿  <status line>
-//	│  <output lines>
-func (b *BashToolUI) RenderResult(output string, exitCode int, elapsed time.Duration, width int) string {
+//	⎿  <status / output lines>
+func (b *BashToolUI) RenderResult(output string, exitCode int, elapsed time.Duration, width int, command string) string {
 	var sb strings.Builder
 
-	maxLines := 15
-	lines := strings.Split(output, "\n")
-
-	// Status line with ⎿ connector
-	if exitCode != 0 {
-		status := b.theme.Error.Render(fmt.Sprintf("Exit code %d (%s)", exitCode, elapsed.Truncate(time.Millisecond)))
-		sb.WriteString(RenderResponseLine(status, b.theme))
-	} else {
-		status := b.theme.Dim.Render(fmt.Sprintf("Ran (%s)", elapsed.Truncate(time.Millisecond)))
-		sb.WriteString(RenderResponseLine(status, b.theme))
+	// Clean up output lines
+	const maxLinesToShow = 3 // matches TS MAX_LINES_TO_SHOW
+	lines := collapseEmptyLines(strings.Split(output, "\n"))
+	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
 	}
 
-	// Output lines
-	if len(lines) > 0 && !(len(lines) == 1 && lines[0] == "") {
-		sb.WriteString("\n")
-		if len(lines) > maxLines {
-			for _, line := range lines[:maxLines/2] {
-				sb.WriteString(b.theme.TreeConn.Render("  │ "))
-				sb.WriteString(b.theme.Output.Render(truncateLine(line, width-6)))
-				sb.WriteString("\n")
-			}
-			sb.WriteString(b.theme.Dim.Render(fmt.Sprintf("  │ … (%d lines omitted)", len(lines)-maxLines)))
-			sb.WriteString("\n")
-			for _, line := range lines[len(lines)-maxLines/2:] {
-				sb.WriteString(b.theme.TreeConn.Render("  │ "))
-				sb.WriteString(b.theme.Output.Render(truncateLine(line, width-6)))
-				sb.WriteString("\n")
-			}
+	hasOutput := len(lines) > 0 && !(len(lines) == 1 && lines[0] == "")
+
+	// --- Status / result line ---
+	if exitCode != 0 {
+		// Check for semantic interpretation first (e.g. grep exit 1)
+		if interp := interpretExitCode(command, exitCode); interp != "" {
+			status := b.theme.Dim.Render(interp)
+			sb.WriteString(RenderResponseLine(status, b.theme))
 		} else {
-			for _, line := range lines {
-				sb.WriteString(b.theme.TreeConn.Render("  │ "))
-				sb.WriteString(b.theme.Output.Render(truncateLine(line, width-6)))
-				sb.WriteString("\n")
+			status := b.theme.Error.Render(fmt.Sprintf("Exit code %d (%s)", exitCode, elapsed.Truncate(time.Millisecond)))
+			sb.WriteString(RenderResponseLine(status, b.theme))
+		}
+	} else if !hasOutput {
+		// Empty output: show "Done" for silent commands, "(No output)" otherwise
+		var hint string
+		if isSilentCommand(command) {
+			hint = fmt.Sprintf("Done (%s)", elapsed.Truncate(time.Millisecond))
+		} else {
+			hint = fmt.Sprintf("(No output) (%s)", elapsed.Truncate(time.Millisecond))
+		}
+		sb.WriteString(RenderResponseLine(b.theme.Dim.Render(hint), b.theme))
+	}
+
+	// --- Output lines (TS-style: first 3 lines + "… +N lines") ---
+	if hasOutput {
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		showLines := lines
+		remaining := 0
+		if len(lines) > maxLinesToShow {
+			// If only 1 extra line, just show it (matches TS wrapText behavior)
+			if len(lines) == maxLinesToShow+1 {
+				showLines = lines
+			} else {
+				showLines = lines[:maxLinesToShow]
+				remaining = len(lines) - maxLinesToShow
 			}
+		}
+		for _, line := range showLines {
+			sb.WriteString(RenderResponseLine(b.theme.Output.Render(truncateLine(line, width-6)), b.theme))
+			sb.WriteString("\n")
+		}
+		if remaining > 0 {
+			sb.WriteString(RenderResponseLine(
+				b.theme.Dim.Render(fmt.Sprintf("… +%d lines", remaining)),
+				b.theme,
+			))
+			sb.WriteString("\n")
 		}
 	}
 
@@ -116,12 +142,12 @@ type BashProgress struct {
 
 // RenderProgress renders a progress line for a running bash command:
 //
-//	⎿  Running… 12 lines · 3.2KB · 5s
+//	⎿  Running… ~12 lines · 3.2KB · 5s
 func (b *BashToolUI) RenderProgress(p BashProgress) string {
 	var parts []string
 	parts = append(parts, "Running…")
 	if p.TotalLines > 0 {
-		parts = append(parts, fmt.Sprintf("%d lines", p.TotalLines))
+		parts = append(parts, fmt.Sprintf("~%d lines", p.TotalLines))
 	}
 	if p.TotalBytes > 0 {
 		parts = append(parts, formatBashBytes(p.TotalBytes))
@@ -129,14 +155,48 @@ func (b *BashToolUI) RenderProgress(p BashProgress) string {
 	if p.ElapsedSec >= 1 {
 		parts = append(parts, fmt.Sprintf("%.0fs", p.ElapsedSec))
 	}
-	if p.TimeoutMs > 0 && p.ElapsedSec > 0 {
-		pct := (p.ElapsedSec * 1000) / float64(p.TimeoutMs) * 100
-		if pct > 50 {
-			parts = append(parts, fmt.Sprintf("%.0f%% timeout", pct))
+	if p.TimeoutMs > 0 {
+		timeoutSec := float64(p.TimeoutMs) / 1000
+		if p.ElapsedSec > 0 {
+			pct := (p.ElapsedSec / timeoutSec) * 100
+			if pct > 50 {
+				parts = append(parts, fmt.Sprintf("%.0f%% of timeout %.0fs", pct, timeoutSec))
+			}
+		} else {
+			parts = append(parts, fmt.Sprintf("timeout %.0fs", timeoutSec))
 		}
 	}
 	msg := strings.Join(parts, " · ")
 	return RenderResponseLine(b.theme.Dim.Render(msg), b.theme)
+}
+
+// RenderProgressFull renders a progress line with optional trailing output lines:
+//
+//	⎿  Running… ~12 lines · 3.2KB · 5s
+//	  │ last output line 1
+//	  │ last output line 2
+func (b *BashToolUI) RenderProgressFull(p BashProgress, width int) string {
+	var sb strings.Builder
+	sb.WriteString(b.RenderProgress(p))
+
+	if p.Output != "" {
+		lines := strings.Split(p.Output, "\n")
+		maxTail := 5
+		show := lines
+		if len(show) > maxTail {
+			show = show[len(show)-maxTail:]
+		}
+		for _, line := range show {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			sb.WriteString("\n")
+			sb.WriteString(b.theme.TreeConn.Render("  │ "))
+			sb.WriteString(b.theme.Output.Render(truncateLine(line, width-6)))
+		}
+	}
+
+	return sb.String()
 }
 
 // BackgroundHintText returns the shortcut hint text for backgrounding.
@@ -291,6 +351,58 @@ func ParseSedTarget(command string) (string, bool) {
 	return "", false
 }
 
+// ── exit code interpretation ─────────────────────────────────────────────────
+
+// silentCommands are commands that typically produce no stdout on success.
+// Matches TS BASH_SILENT_COMMANDS.
+var silentCommands = map[string]bool{
+	"mv": true, "cp": true, "rm": true, "mkdir": true, "rmdir": true,
+	"chmod": true, "chown": true, "chgrp": true, "touch": true, "ln": true,
+	"cd": true, "export": true, "unset": true, "wait": true,
+}
+
+// isSilentCommand returns true if the command is expected to produce no output.
+func isSilentCommand(command string) bool {
+	base := extractBaseCommand(command)
+	return silentCommands[base]
+}
+
+// extractBaseCommand returns the first word (base command) from a shell command,
+// skipping leading VAR=val environment variable assignments.
+func extractBaseCommand(command string) string {
+	fields := strings.Fields(strings.TrimSpace(command))
+	for _, f := range fields {
+		// Skip VAR=val assignments
+		if strings.Contains(f, "=") && !strings.HasPrefix(f, "-") {
+			continue
+		}
+		return f
+	}
+	return ""
+}
+
+// interpretExitCode returns a human-readable interpretation for specific
+// command + exit code combinations. Returns "" if no special interpretation.
+// Matches TS commandSemantics.ts interpretCommandResult.
+func interpretExitCode(command string, exitCode int) string {
+	base := extractBaseCommand(command)
+	switch base {
+	case "grep", "rg", "ag", "ack":
+		if exitCode == 1 {
+			return "No matches found"
+		}
+	case "diff":
+		if exitCode == 1 {
+			return "Files differ"
+		}
+	case "test", "[":
+		if exitCode == 1 {
+			return "Test condition false"
+		}
+	}
+	return ""
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func truncateLine(s string, maxLen int) string {
@@ -313,4 +425,20 @@ func firstLine(s string) string {
 		return s[:idx] + "…"
 	}
 	return s
+}
+
+// collapseEmptyLines replaces runs of consecutive empty (whitespace-only) lines
+// with a single empty line, preventing large blank areas in rendered output.
+func collapseEmptyLines(lines []string) []string {
+	out := make([]string, 0, len(lines))
+	prevEmpty := false
+	for _, l := range lines {
+		empty := strings.TrimSpace(l) == ""
+		if empty && prevEmpty {
+			continue
+		}
+		out = append(out, l)
+		prevEmpty = empty
+	}
+	return out
 }

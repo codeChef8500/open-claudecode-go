@@ -70,6 +70,62 @@ func (r *ReadToolUI) RenderResult(content string, lineCount int, elapsed time.Du
 	return strings.TrimRight(sb.String(), "\n")
 }
 
+// ReadFileType identifies what kind of content was read.
+type ReadFileType int
+
+const (
+	ReadFileText      ReadFileType = iota // default: text file
+	ReadFileImage                         // image file (png, jpg, etc.)
+	ReadFileNotebook                      // Jupyter notebook
+	ReadFilePDF                           // PDF document
+	ReadFileUnchanged                     // file unchanged since last read
+)
+
+// RenderResultTyped renders a type-specific read result:
+//
+//	⎿  Read image (2.3KB)
+//	⎿  Read 3 cells
+//	⎿  Read PDF (45.2KB)
+//	⎿  Unchanged since last read
+//	⎿  Read 42 lines (12ms)
+func (r *ReadToolUI) RenderResultTyped(content string, lineCount int, elapsed time.Duration, width int, verbose bool, fileType ReadFileType, sizeBytes int) string {
+	switch fileType {
+	case ReadFileImage:
+		msg := fmt.Sprintf("Read image (%s)", formatReadBytes(sizeBytes))
+		return RenderResponseLine(r.theme.Dim.Render(msg), r.theme)
+	case ReadFileNotebook:
+		cells := lineCount
+		if cells == 0 {
+			cells = 1
+		}
+		label := "cells"
+		if cells == 1 {
+			label = "cell"
+		}
+		msg := fmt.Sprintf("Read %d %s (%s)", cells, label, elapsed.Truncate(time.Millisecond))
+		return RenderResponseLine(r.theme.Dim.Render(msg), r.theme)
+	case ReadFilePDF:
+		msg := fmt.Sprintf("Read PDF (%s)", formatReadBytes(sizeBytes))
+		return RenderResponseLine(r.theme.Dim.Render(msg), r.theme)
+	case ReadFileUnchanged:
+		return RenderResponseLine(r.theme.Dim.Render("Unchanged since last read"), r.theme)
+	default:
+		return r.RenderResult(content, lineCount, elapsed, width, verbose)
+	}
+}
+
+// formatReadBytes formats a byte count for read result display.
+func formatReadBytes(b int) string {
+	switch {
+	case b >= 1024*1024:
+		return fmt.Sprintf("%.1fMB", float64(b)/(1024*1024))
+	case b >= 1024:
+		return fmt.Sprintf("%.1fKB", float64(b)/1024)
+	default:
+		return fmt.Sprintf("%dB", b)
+	}
+}
+
 // GlobToolUI renders glob/search tool use.
 // Layout matches claude-code-main's GlobTool:
 //
@@ -118,9 +174,12 @@ func (g *GlobToolUI) RenderResult(files []string, elapsed time.Duration, verbose
 
 	sb.WriteString(RenderResponseLine(g.theme.Dim.Render(summary), g.theme))
 
-	// Show file list in verbose mode
-	if verbose && len(files) > 0 {
-		maxShow := 8
+	// Show file list — always show first few, more in verbose mode
+	if len(files) > 0 {
+		maxShow := 5
+		if verbose {
+			maxShow = 15
+		}
 		show := files
 		if len(show) > maxShow {
 			show = show[:maxShow]
@@ -191,10 +250,13 @@ func (g *GrepToolUI) RenderResult(matchCount, fileCount int, output string, elap
 
 	sb.WriteString(RenderResponseLine(g.theme.Dim.Render(summary), g.theme))
 
-	// Show output in verbose mode
-	if verbose && output != "" {
+	// Show match lines — always show first few, more in verbose mode
+	if output != "" {
 		lines := strings.Split(output, "\n")
-		maxShow := 8
+		maxShow := 5
+		if verbose {
+			maxShow = 15
+		}
 		show := lines
 		if len(show) > maxShow {
 			show = show[:maxShow]
