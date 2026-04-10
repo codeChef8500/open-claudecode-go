@@ -390,7 +390,7 @@ func RenderToolResultMessage(msg RenderableMessage, opts RenderOpts) string {
 				URL     string `json:"url"`
 				Snippet string `json:"snippet"`
 			} `json:"results"`
-			DurationSeconds float64 `json:"duration_seconds"`
+			DurationSeconds float64 `json:"durationSeconds"`
 		}
 		if json.Unmarshal([]byte(output), &searchOut) == nil && len(searchOut.Results) > 0 {
 			var hits []toolui.SearchHitDisplay

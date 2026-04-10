@@ -261,25 +261,14 @@ func (e *Engine) buildExecContext() *command.ExecContext {
 		PermissionMode: e.cfg.PermissionMode,
 		AutoMode:       e.cfg.AutoMode,
 		Verbose:        e.cfg.Verbose,
+		EffortLevel:    e.cfg.EffortValue,
 	}
 
-	// Pull dynamic state from the store if available.
-	if e.store != nil {
-		if v := e.store.Get("turn_count"); v != nil {
-			if tc, ok := v.(int); ok {
-				ectx.TurnCount = tc
-			}
-		}
-		if v := e.store.Get("total_tokens"); v != nil {
-			if tt, ok := v.(int); ok {
-				ectx.TotalTokens = tt
-			}
-		}
-		if v := e.store.Get("cost_usd"); v != nil {
-			if c, ok := v.(float64); ok {
-				ectx.CostUSD = c
-			}
-		}
+	// Pull dynamic state from the session state (atomic counters).
+	if e.session != nil {
+		ectx.TurnCount = e.session.TurnCount()
+		ectx.TotalTokens = e.session.TotalTokens()
+		ectx.CostUSD = e.session.TotalCostUSD()
 	}
 
 	// Wire AddWorkingDir callback.

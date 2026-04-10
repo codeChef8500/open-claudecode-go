@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/html"
+
 	"github.com/wall-ai/agent-engine/internal/engine"
 	"github.com/wall-ai/agent-engine/internal/tool"
 )
@@ -41,7 +43,7 @@ type Output struct {
 	DurationSeconds float64     `json:"durationSeconds"`
 }
 
-// WebSearchTool uses a configurable search backend (default: DuckDuckGo JSON API).
+// WebSearchTool uses a configurable search backend (default: DuckDuckGo HTML search).
 type WebSearchTool struct {
 	tool.BaseTool
 	apiKey   string
@@ -52,14 +54,14 @@ type WebSearchTool struct {
 
 func New(apiKey, baseURL string) *WebSearchTool {
 	if baseURL == "" {
-		baseURL = "https://api.duckduckgo.com"
+		baseURL = "https://html.duckduckgo.com"
 	}
 	t := &WebSearchTool{
 		apiKey:  apiKey,
 		baseURL: baseURL,
 		client:  &http.Client{Timeout: httpTimeout},
 	}
-	// Default provider is the built-in DuckDuckGo backend.
+	// Default provider is the built-in DuckDuckGo HTML search backend.
 	t.provider = &ddgProvider{tool: t}
 	return t
 }
@@ -282,9 +284,9 @@ func emitProgress(uctx *tool.UseContext, p *engine.ProgressData) {
 	}
 }
 
-// ── DuckDuckGo provider ─────────────────────────────────────────────────────
+// ── DuckDuckGo HTML provider ────────────────────────────────────────────────
 
-// ddgProvider implements SearchProvider using the DuckDuckGo JSON API.
+// ddgProvider implements SearchProvider using DuckDuckGo's HTML search endpoint.
 type ddgProvider struct {
 	tool *WebSearchTool
 }
@@ -292,18 +294,19 @@ type ddgProvider struct {
 func (p *ddgProvider) Name() string { return "DuckDuckGo" }
 
 func (p *ddgProvider) Search(ctx context.Context, query string, maxResults int, allowedDomains, blockedDomains []string) ([]SearchHit, error) {
-	params := url.Values{
-		"q":       {query},
-		"format":  {"json"},
-		"no_html": {"1"},
+	form := url.Values{
+		"q": {query},
 	}
-	reqURL := p.tool.baseURL + "/?" + params.Encode()
+	reqURL := p.tool.baseURL + "/html/"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "AgentEngine/1.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
 
 	resp, err := p.tool.client.Do(req)
 	if err != nil {
@@ -311,37 +314,23 @@ func (p *ddgProvider) Search(ctx context.Context, query string, maxResults int, 
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("DuckDuckGo returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
 		return nil, err
 	}
 
-	return parseDDGResponse(body, maxResults, allowedDomains, blockedDomains), nil
+	return parseDDGHTML(body, maxResults, allowedDomains, blockedDomains)
 }
 
-// parseDDGResponse extracts search hits from DuckDuckGo's JSON API response.
-// Falls back to returning the raw body snippet if parsing fails.
-func parseDDGResponse(body []byte, maxResults int, allowedDomains, blockedDomains []string) []SearchHit {
-	var ddg struct {
-		Abstract      string `json:"Abstract"`
-		AbstractURL   string `json:"AbstractURL"`
-		RelatedTopics []struct {
-			Text     string `json:"Text"`
-			FirstURL string `json:"FirstURL"`
-		} `json:"RelatedTopics"`
-		Results []struct {
-			Text     string `json:"Text"`
-			FirstURL string `json:"FirstURL"`
-		} `json:"Results"`
-	}
-
-	if err := json.Unmarshal(body, &ddg); err != nil {
-		// Fallback: return raw body as a single result.
-		text := string(body)
-		if len(text) > 5000 {
-			text = text[:5000] + "\n[... truncated ...]"
-		}
-		return []SearchHit{{Title: "Raw search results", Snippet: text}}
+// parseDDGHTML extracts search hits from DuckDuckGo's HTML search response.
+func parseDDGHTML(body []byte, maxResults int, allowedDomains, blockedDomains []string) ([]SearchHit, error) {
+	doc, err := html.Parse(strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse HTML: %w", err)
 	}
 
 	allowed := toSet(allowedDomains)
@@ -349,54 +338,99 @@ func parseDDGResponse(body []byte, maxResults int, allowedDomains, blockedDomain
 
 	var hits []SearchHit
 
-	// Abstract result.
-	if ddg.Abstract != "" && ddg.AbstractURL != "" {
-		if domainMatchesFilter(ddg.AbstractURL, allowed, blocked) {
-			hits = append(hits, SearchHit{
-				Title:   extractTitle(ddg.Abstract),
-				URL:     ddg.AbstractURL,
-				Snippet: ddg.Abstract,
-			})
-		}
-	}
-
-	// Direct results.
-	for _, r := range ddg.Results {
+	// Walk the DOM looking for result divs.
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
 		if len(hits) >= maxResults {
-			break
+			return
 		}
-		if r.FirstURL == "" {
-			continue
-		}
-		if !domainMatchesFilter(r.FirstURL, allowed, blocked) {
-			continue
-		}
-		hits = append(hits, SearchHit{
-			Title:   extractTitle(r.Text),
-			URL:     r.FirstURL,
-			Snippet: r.Text,
-		})
-	}
 
-	// Related topics.
-	for _, r := range ddg.RelatedTopics {
-		if len(hits) >= maxResults {
-			break
+		// Each search result is in a div with class "result" or "result results_links"
+		if n.Type == html.ElementNode && n.Data == "div" && hasClass(n, "result") {
+			hit := extractDDGResult(n)
+			if hit.URL != "" && hit.Title != "" {
+				if domainMatchesFilter(hit.URL, allowed, blocked) {
+					hits = append(hits, hit)
+				}
+			}
+			return
 		}
-		if r.FirstURL == "" {
-			continue
-		}
-		if !domainMatchesFilter(r.FirstURL, allowed, blocked) {
-			continue
-		}
-		hits = append(hits, SearchHit{
-			Title:   extractTitle(r.Text),
-			URL:     r.FirstURL,
-			Snippet: r.Text,
-		})
-	}
 
-	return hits
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+
+	return hits, nil
+}
+
+// extractDDGResult extracts title, URL, and snippet from a DDG result div.
+func extractDDGResult(n *html.Node) SearchHit {
+	var hit SearchHit
+	var extract func(*html.Node)
+	extract = func(node *html.Node) {
+		if node.Type == html.ElementNode && node.Data == "a" && hasClass(node, "result__a") {
+			hit.URL = getAttr(node, "href")
+			hit.Title = textContent(node)
+			// DDG sometimes uses redirect URLs; extract the actual URL.
+			if strings.Contains(hit.URL, "uddg=") {
+				if u, err := url.Parse(hit.URL); err == nil {
+					if actual := u.Query().Get("uddg"); actual != "" {
+						hit.URL = actual
+					}
+				}
+			}
+		}
+		if node.Type == html.ElementNode && node.Data == "a" && hasClass(node, "result__snippet") {
+			hit.Snippet = textContent(node)
+		}
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			extract(c)
+		}
+	}
+	extract(n)
+	return hit
+}
+
+// hasClass checks whether an HTML node has the given CSS class.
+func hasClass(n *html.Node, class string) bool {
+	for _, a := range n.Attr {
+		if a.Key == "class" {
+			for _, c := range strings.Fields(a.Val) {
+				if c == class {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// getAttr returns the value of the named attribute, or "".
+func getAttr(n *html.Node, key string) string {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return a.Val
+		}
+	}
+	return ""
+}
+
+// textContent returns the concatenated text content of a node and its children.
+func textContent(n *html.Node) string {
+	var sb strings.Builder
+	var collect func(*html.Node)
+	collect = func(node *html.Node) {
+		if node.Type == html.TextNode {
+			sb.WriteString(node.Data)
+		}
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			collect(c)
+		}
+	}
+	collect(n)
+	return strings.TrimSpace(sb.String())
 }
 
 // extractTitle returns the first ~80 chars of text as a title.

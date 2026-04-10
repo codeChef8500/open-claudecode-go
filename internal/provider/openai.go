@@ -96,6 +96,9 @@ func (p *OpenAIProvider) buildRequest(params engine.CallParams) ([]byte, error) 
 		"model":    params.Model,
 		"messages": msgs,
 		"stream":   true,
+		"stream_options": map[string]interface{}{
+			"include_usage": true,
+		},
 	}
 	if params.MaxTokens > 0 {
 		payload["max_tokens"] = params.MaxTokens
@@ -115,8 +118,8 @@ func (p *OpenAIProvider) streamResponse(ctx context.Context, body io.ReadCloser,
 			out <- &engine.StreamEvent{Type: engine.EventDone}
 			return
 		}
-		ev := p.parseChunk(data)
-		if ev != nil {
+		events := p.parseChunk(data)
+		for _, ev := range events {
 			select {
 			case <-ctx.Done():
 				return
@@ -126,7 +129,7 @@ func (p *OpenAIProvider) streamResponse(ctx context.Context, body io.ReadCloser,
 	}
 }
 
-func (p *OpenAIProvider) parseChunk(data string) *engine.StreamEvent {
+func (p *OpenAIProvider) parseChunk(data string) []*engine.StreamEvent {
 	var chunk struct {
 		Choices []struct {
 			Delta struct {
@@ -142,23 +145,25 @@ func (p *OpenAIProvider) parseChunk(data string) *engine.StreamEvent {
 	if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 		return nil
 	}
+	var events []*engine.StreamEvent
 	if len(chunk.Choices) > 0 {
 		text := chunk.Choices[0].Delta.Content
 		if text != "" {
-			return &engine.StreamEvent{Type: engine.EventTextDelta, Text: text}
+			events = append(events, &engine.StreamEvent{Type: engine.EventTextDelta, Text: text})
 		}
 		if chunk.Choices[0].FinishReason == "stop" {
-			return &engine.StreamEvent{Type: engine.EventDone}
+			events = append(events, &engine.StreamEvent{Type: engine.EventDone})
 		}
 	}
+	// Usage may arrive in the same chunk as finish_reason or in a separate final chunk.
 	if chunk.Usage != nil {
-		return &engine.StreamEvent{
+		events = append(events, &engine.StreamEvent{
 			Type: engine.EventUsage,
 			Usage: &engine.UsageStats{
 				InputTokens:  chunk.Usage.PromptTokens,
 				OutputTokens: chunk.Usage.CompletionTokens,
 			},
-		}
+		})
 	}
-	return nil
+	return events
 }

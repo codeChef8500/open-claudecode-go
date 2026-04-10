@@ -261,6 +261,31 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 			return err
 		}
 
+		// ── 5b. Fallback token estimation ────────────────────────────
+		// Some OpenAI-compatible providers (e.g. MiniMax) don't return
+		// usage stats in streaming mode. Estimate from message content
+		// so /session and cost tracking show reasonable values.
+		if ls.tokenBudget.InputTokens == 0 && assistantMsg != nil {
+			estInput := EstimateTokens(ls.messages)
+			estOutput := EstimateTokens([]*Message{assistantMsg})
+			costUSD := computeCostUSD(&UsageStats{
+				InputTokens:  estInput,
+				OutputTokens: estOutput,
+			}, effModel)
+			e.session.AddUsage(estInput, estOutput, costUSD)
+			e.store.AddCostUSD(costUSD)
+			out <- &StreamEvent{
+				Type: EventUsage,
+				Usage: &UsageStats{
+					InputTokens:  estInput,
+					OutputTokens: estOutput,
+					CostUSD:      costUSD,
+				},
+			}
+			slog.Debug("queryloop: estimated tokens (no provider usage)",
+				slog.Int("input", estInput), slog.Int("output", estOutput))
+		}
+
 		// ── 6. Persist and append assistant turn ──────────────────────
 		if assistantMsg != nil && len(assistantMsg.Content) > 0 {
 			ls.messages = append(ls.messages, assistantMsg)

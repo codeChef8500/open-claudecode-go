@@ -322,24 +322,14 @@ func (r *Runner) buildExecContext() *command.ExecContext {
 		ectx.AutoMode = cfg.AutoMode
 		ectx.Verbose = cfg.Verbose
 		ectx.PermissionMode = cfg.PermissionMode
+		ectx.EffortLevel = cfg.EffortValue
 	}
-	// Pull dynamic state from the store.
-	if s := eng.Store(); s != nil {
-		if v := s.Get("cost_usd"); v != nil {
-			if c, ok := v.(float64); ok {
-				ectx.CostUSD = c
-			}
-		}
-		if v := s.Get("turn_count"); v != nil {
-			if tc, ok := v.(int); ok {
-				ectx.TurnCount = tc
-			}
-		}
-		if v := s.Get("total_tokens"); v != nil {
-			if tt, ok := v.(int); ok {
-				ectx.TotalTokens = tt
-			}
-		}
+	// Pull dynamic state from the session tracker (the store keys are never written).
+	if t := r.result.SessionTracker; t != nil {
+		summary := t.Summary()
+		ectx.TurnCount = summary.TotalTurns
+		ectx.TotalTokens = int(summary.InputTokens + summary.OutputTokens)
+		ectx.CostUSD = summary.TotalCostUSD
 	}
 
 	// Wire AddWorkingDir callback: updates engine config + permission checker.
