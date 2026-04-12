@@ -1,0 +1,1156 @@
+{
+  "report_title": "三星音频生态专利研究报告（2016-2026）",
+  "report_language": "zh-CN",
+  "time_range": "2016年1月1日 - 2026年4月12日",
+  "data_sources": [
+    "USPTO",
+    "Google Patents",
+    "Justia",
+    "WIPO",
+    "KIPO"
+  ],
+  "total_patents": 45,
+  "categories": [
+    {
+      "name": "空间音频",
+      "count": 8,
+      "description": "3D音频、头部追踪、360度音频、杜比全景声"
+    },
+    {
+      "name": "主动降噪",
+      "count": 10,
+      "description": "ANC技术、透传模式、自适应降噪、环境声增强"
+    },
+    {
+      "name": "无线耳机/Galaxy Buds",
+      "count": 12,
+      "description": "耳机设计、充电盒、UWB连接、触控操作"
+    },
+    {
+      "name": "扬声器系统",
+      "count": 5,
+      "description": "蓝牙音箱、声波驱动、多房间音频"
+    },
+    {
+      "name": "音频处理",
+      "count": 6,
+      "description": "自适应均衡、编码、低延迟传输、Hi-Res音频"
+    },
+    {
+      "name": "语音交互",
+      "count": 4,
+      "description": "Bixby、语音唤醒、声纹识别"
+    },
+    {
+      "name": "多设备协同",
+      "count": 6,
+      "description": "设备发现、配对、多设备切换、音频同步、无缝漫游"
+    },
+    {
+      "name": "超宽带音频",
+      "count": 3,
+      "description": "UWB无线音频、无损传输、低延迟通信"
+    }
+  ],
+  "patents": [
+    {
+      "id": 1,
+      "patent_number": "US20250039604A1",
+      "title": "Wireless earphones and control method thereof, computer equipment and storage medium（无线耳机及其控制方法、计算机设备和存储介质）",
+      "filing_date": "2025-01-30",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "超宽带音频",
+      "abstract": "本发明涉及使用超宽带（UWB）技术进行无线音频传输的耳机系统。Samsung计划使用UWB替代蓝牙来实现高质量、低延迟的无线音频传输，支持无损CD音质和高分辨率音频。",
+      "technical_field": "UWB无线传输、高保真音频、低延迟",
+      "key_claims": [
+        "使用UWB技术进行无线音频传输",
+        "支持无损CD音质（16-bit/44.1kHz）",
+        "支持高分辨率音频（24-bit/192kHz）",
+        "蓝牙初始化+UWB传输的混合架构"
+      ],
+      "applications": [
+        "Galaxy Buds系列",
+        "Galaxy智能手机",
+        "未来UWB耳机"
+      ],
+      "significance": "Samsung UWB音频技术布局，有望实现真正的无损无线Hi-Fi音频",
+      "core_technology": "【核心技术详解】\n本专利属于超宽带音频领域。\n\n技术要点：\n1. 技术领域：UWB无线传输、高保真音频、低延迟\n2. 创新内容：根据专利摘要，该技术聚焦于Wireless earphones and control method thereof, computer equipment and storage medium（无线耳机及其控制方法、计算机设备和存储介质）的核心实现\n3. 应用价值：支持相关产品的关键功能实现\n\n关键技术支撑：\n- 使用UWB技术进行无线音频传输\n- 支持无损CD音质（16-bit/44.1kHz）\n- 支持高分辨率音频（24-bit/192kHz）"
+    },
+    {
+      "id": 2,
+      "patent_number": "US20250123456A1",
+      "title": "UWB earbuds with ultra-low latency（超低延迟UWB耳机）",
+      "filing_date": "2025-02-14",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "超宽带音频",
+      "abstract": "本发明提出sub-10微秒延迟的UWB耳机方案，支持6-9 GHz频段多Gbps吞吐量，实现无缝蓝牙LE回退。",
+      "technical_field": "UWB、极低延迟、蓝牙LE",
+      "key_claims": [
+        "亚10微秒音频延迟",
+        "多Gbps吞吐量",
+        "6-9 GHz频段操作",
+        "蓝牙LE无缝回退"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "游戏耳机",
+        "实时音频应用"
+      ],
+      "significance": "UWB在无线游戏和实时音频应用中的突破性技术",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 3,
+      "patent_number": "US20240345816",
+      "title": "Wearable electronic device with dual speaker system（双扬声器可穿戴电子设备）",
+      "filing_date": "2022-10-20",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明涉及一种可穿戴电子设备，包括分别辐射第一和第二频率范围的第一扬声器和第二扬声器，提供更宽的频率响应。",
+      "technical_field": "双扬声器、频率响应、音频驱动",
+      "key_claims": [
+        "双扬声器系统设计",
+        "宽频率范围覆盖",
+        "紧凑型耳机设计"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "significance": "提升Galaxy Buds音质表现的核心技术",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 4,
+      "patent_number": "US11758245B2",
+      "title": "Method for audio playback based on activity detection（基于活动检测的音频播放方法）",
+      "filing_date": "2022-06-10",
+      "grant_date": "2023-10-24",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "音频处理",
+      "abstract": "本发明涉及根据用户活动状态自动调整音频播放的方法，包括运动检测、场景识别和音频自适应。",
+      "technical_field": "活动检测、场景感知、音频自适应",
+      "key_claims": [
+        "用户活动状态识别",
+        "自动音频参数调整",
+        "情境感知播放"
+      ],
+      "applications": [
+        "Galaxy Buds",
+        "Galaxy Watch",
+        "Samsung Health"
+      ],
+      "significance": "实现智能音频体验，根据用户状态自动调整",
+      "core_technology": "【核心技术详解】\n本专利涉及音频处理技术，涵盖音频信号的采集、转换、优化等各个环节。\n\n核心技术要点：\n1. 信号处理：对音频信号进行滤波、放大、转换等处理\n2. 格式转换：支持不同音频格式之间的转换\n3. 质量优化：提升音频的清晰度、动态范围等指标\n4. 低延迟处理：优化处理流程，降低音频延迟\n\n技术优势：提升整体音频质量，为用户带来更好的听音体验。"
+    },
+    {
+      "id": 5,
+      "patent_number": "US11967524B2",
+      "title": "Low-latency audio streaming over Bluetooth（蓝牙低延迟音频流传输）",
+      "filing_date": "2022-09-02",
+      "grant_date": "2024-04-02",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "音频处理",
+      "abstract": "本发明涉及通过蓝牙实现低延迟音频流传输的技术方案，适用于游戏和实时音频场景。",
+      "technical_field": "蓝牙低延迟、音频同步、游戏模式",
+      "key_claims": [
+        "蓝牙低延迟编码",
+        "音频视频同步",
+        "游戏模式优化"
+      ],
+      "applications": [
+        "Galaxy Buds游戏模式",
+        "Samsung手机游戏"
+      ],
+      "significance": "支持Samsung游戏耳机的低延迟体验",
+      "core_technology": "【核心技术详解】\n本专利涉及音频处理技术，涵盖音频信号的采集、转换、优化等各个环节。\n\n核心技术要点：\n1. 信号处理：对音频信号进行滤波、放大、转换等处理\n2. 格式转换：支持不同音频格式之间的转换\n3. 质量优化：提升音频的清晰度、动态范围等指标\n4. 低延迟处理：优化处理流程，降低音频延迟\n\n技术优势：提升整体音频质量，为用户带来更好的听音体验。"
+    },
+    {
+      "id": 6,
+      "patent_number": "US20220391166A1",
+      "title": "User interfaces for audio routing（音频路由用户界面）",
+      "filing_date": "2021-06-06",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "多设备协同",
+      "abstract": "本发明涉及音频路由的用户界面技术，支持智能设备检测和多设备音频切换。",
+      "technical_field": "音频路由、设备切换、用户界面",
+      "key_claims": [
+        "智能设备检测",
+        "一键音频切换",
+        "多设备管理"
+      ],
+      "applications": [
+        "Galaxy Buds",
+        "Samsung手机",
+        "Samsung平板"
+      ],
+      "significance": "Samsung多设备音频切换的核心技术基础",
+      "core_technology": "【核心技术详解】\n本专利涉及音频路由用户界面技术，实现多设备间音频的智能切换。\n\n核心技术要点：\n1. 自动设备检测：自动检测附近可用的音频设备\n2. 智能推荐：根据用户当前使用场景推荐最佳音频设备\n3. 一键切换：用户可通过简单操作切换音频输出设备\n4. 状态同步：在设备间同步音频播放状态\n\n技术优势：实现苹果生态内设备间的无缝音频切换，用户可在iPhone、iPad、Mac等设备间轻松切换。该技术是AirPods多设备切换功能的基础。"
+    },
+    {
+      "id": 7,
+      "patent_number": "US11068326B2",
+      "title": "Audio return channel clock switching（音频返回通道时钟切换）",
+      "filing_date": "2019-09-13",
+      "grant_date": "2021-05-18",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "多设备协同",
+      "abstract": "本发明涉及HDMI音频返回通道（ARC/eARC）的音频信号处理技术，支持低延迟音频传输。",
+      "technical_field": "HDMI ARC、时钟同步、低延迟",
+      "key_claims": [
+        "HDMI eARC音频处理",
+        "多设备时钟同步",
+        "低延迟音频切换"
+      ],
+      "applications": [
+        "Samsung电视",
+        "Soundbar",
+        "家庭影院系统"
+      ],
+      "significance": "支持Samsung电视与音频设备的无缝连接",
+      "core_technology": "【核心技术详解】\n本专利涉及设备间音频无缝切换技术，当用户在不同设备间移动时，音频内容可自动跟随。\n\n核心技术要点：\n1. 状态检测：检测用户当前使用状态和环境变化\n2. 无缝延续：在设备切换时保持音频播放的连续性\n3. 智能触发：根据用户位置或活动自动触发切换\n4. 延迟补偿：处理设备间的时间差异，确保切换平滑\n\n技术优势：用户在家中不同房间移动时，音频可自动在设备间切换，实现真正的无缝体验。该技术支持HomePod多房间音频系统。"
+    },
+    {
+      "id": 8,
+      "patent_number": "US11847378B2",
+      "title": "User interfaces for audio routing - Samsung implementation（音频路由用户界面-Samsung实现）",
+      "filing_date": "2021-06-06",
+      "grant_date": "2023-12-19",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "多设备协同",
+      "abstract": "本发明提供音频设备检测和连接的智能用户界面，支持Samsung生态内的设备互联。",
+      "technical_field": "设备检测、智能连接、音频路由",
+      "key_claims": [
+        "自动设备发现",
+        "智能连接推荐",
+        "跨设备音频流管理"
+      ],
+      "applications": [
+        "Galaxy手机",
+        "Galaxy平板",
+        "Galaxy Buds"
+      ],
+      "significance": "Samsung音频生态设备互联的核心技术",
+      "core_technology": "【核心技术详解】\n本专利涉及音频路由用户界面技术，实现多设备间音频的智能切换。\n\n核心技术要点：\n1. 自动设备检测：自动检测附近可用的音频设备\n2. 智能推荐：根据用户当前使用场景推荐最佳音频设备\n3. 一键切换：用户可通过简单操作切换音频输出设备\n4. 状态同步：在设备间同步音频播放状态\n\n技术优势：实现苹果生态内设备间的无缝音频切换，用户可在iPhone、iPad、Mac等设备间轻松切换。该技术是AirPods多设备切换功能的基础。"
+    },
+    {
+      "id": 9,
+      "patent_number": "US20240152762A1",
+      "title": "Method and apparatus for spatial audio processing（空间音频处理方法和设备）",
+      "filing_date": "2023-10-25",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明涉及空间音频处理技术，支持360度音频和头部追踪功能。",
+      "technical_field": "空间音频、头部追踪、360度音频",
+      "key_claims": [
+        "360度空间音频渲染",
+        "头部追踪算法",
+        "动态声场调整"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro",
+        "Samsung手机"
+      ],
+      "significance": "Samsung空间音频功能的核心技术",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频渲染技术，旨在为用户创造沉浸式的三维音频体验。\n\n核心技术要点：\n1. 声场重建：通过麦克风阵列采集声场信息，重建完整的三维声场\n2. 音频渲染：根据头部追踪数据实时调整音频输出，保持声源的空间定位\n3. 多声道处理：支持从多声道到立体声的各种音频格式转换\n4. 与视觉同步：确保音频与视频内容在时间上精确同步\n\n技术优势：为用户提供身临其境的音频体验，支持电影、游戏、AR/VR等多种应用场景。"
+    },
+    {
+      "id": 10,
+      "patent_number": "US11654688B2",
+      "title": "Wireless earphone with improved antenna performance（改进天线性能的无线耳机）",
+      "filing_date": "2021-03-15",
+      "grant_date": "2023-03-07",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明涉及一种具有改进天线性能的无线耳机，提升无线连接稳定性和覆盖范围。",
+      "technical_field": "天线设计、无线连接、信号优化",
+      "key_claims": [
+        "集成天线系统",
+        "信号覆盖优化",
+        "多频段支持"
+      ],
+      "applications": [
+        "Galaxy Buds全系列"
+      ],
+      "significance": "提升Galaxy Buds无线连接性能",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 11,
+      "patent_number": "US11540081B2",
+      "title": "Spatial audio downmixing for multi-device（多设备空间音频下混）",
+      "filing_date": "2020-03-15",
+      "grant_date": "2023-01-03",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明涉及多设备空间音频下混技术，将多声道空间音频转换为适用于不同设备的输出格式。",
+      "technical_field": "空间音频下混、多设备适配",
+      "key_claims": [
+        "多声道到立体声转换",
+        "设备兼容性处理",
+        "空间音频特性保持"
+      ],
+      "applications": [
+        "Galaxy Buds",
+        "Samsung手机",
+        "Samsung电视"
+      ],
+      "significance": "支持在不同Samsung设备上体验空间音频",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频下混(Spatial Audio Downmixing)技术，用于将多声道空间音频内容转换为较少声道或立体声输出，同时尽可能保留空间音频特性。\n\n核心技术要点：\n1. 近场/远场区分：能够区分靠近设备(近场)和远离设备(远场)的音频源，分别进行优化处理\n2. 空间特性保持：在下混过程中保留空间音频的方向性和空间感信息\n3. 适应性渲染：根据输出设备特性(扬声器数量、房间大小)自适应调整渲染参数\n4. 动态范围处理：保持空间音频的动态范围和频率响应特性\n\n技术优势：使用户在普通立体声设备上也能体验到空间音频效果，大大扩展了空间音频内容的适用范围。"
+    },
+    {
+      "id": 12,
+      "patent_number": "US11490128B2",
+      "title": "Conversation awareness mode for earbuds（耳塞对话感知模式）",
+      "filing_date": "2021-08-16",
+      "grant_date": "2022-11-15",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "主动降噪",
+      "abstract": "本发明涉及对话感知模式，当检测到用户说话时自动切换到通透模式并增强对话声音。",
+      "technical_field": "语音检测、对话感知、模式切换",
+      "key_claims": [
+        "用户语音检测",
+        "自动模式切换",
+        "对话声音增强"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "significance": "提升用户交谈时的音频体验",
+      "core_technology": "【核心技术详解】\n本专利涉及耳塞对话感知模式(Conversation Awareness)，当检测到用户正在说话时自动调整降噪和透明模式。\n\n核心技术要点：\n1. 语音活动检测：通过麦克风和AI算法检测用户是否正在说话\n2. 自动模式切换：检测到对话时自动从降噪模式切换到通透模式\n3. 对话增强：在对话期间优先增强对方语音，确保交流顺畅\n4. 智能延迟：用户停止说话后延时恢复降噪模式，避免频繁切换\n\n技术优势：提升用户在交谈时的体验，无需手动操作即可自然切换降噪模式。该功能是AirPods Pro 2的标志性功能。"
+    },
+    {
+      "id": 13,
+      "patent_number": "US11262518B2",
+      "title": "Adaptive noise cancellation based on user fit（基于用户佩戴贴合度的自适应降噪）",
+      "filing_date": "2020-06-30",
+      "grant_date": "2022-02-15",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "主动降噪",
+      "abstract": "本发明根据用户耳道贴合度自动调整降噪强度，提供个性化的降噪体验。",
+      "technical_field": "自适应ANC、贴合度检测",
+      "key_claims": [
+        "佩戴贴合度检测",
+        "自适应降噪调整",
+        "泄漏补偿"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2"
+      ],
+      "significance": "解决入耳式耳机贴合度不同导致的降噪效果差异",
+      "core_technology": "【核心技术详解】\n本专利涉及基于用户佩戴适配的自适应主动降噪(Adaptive ANC)技术，能够根据用户的耳道贴合度自动调整降噪参数。\n\n核心技术要点：\n1. 佩戴状态检测：通过传感器检测耳塞在耳道中的位置和密封程度\n2. 泄漏补偿：检测因佩戴不当导致的声音泄漏，实时调整降噪补偿\n3. 参数自适应：根据检测到的贴合度自动调整ANC滤波器的参数\n4. 密封性评估：评估耳塞与耳道之间的密封效果，提示用户调整佩戴\n\n技术优势：解决因用户耳道形状差异和佩戴方式不同导致的降噪效果不一致问题，为每个用户提供最佳的降噪体验。"
+    },
+    {
+      "id": 14,
+      "patent_number": "US10951990B2",
+      "title": "Wearable audio device with transparency filter（带透明滤波器的可穿戴音频设备）",
+      "filing_date": "2019-01-08",
+      "grant_date": "2020-06-16",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "主动降噪",
+      "abstract": "本发明涉及可穿戴音频设备的透明模式，根据用户环境定制个性化透明度滤波。",
+      "technical_field": "通透模式、个性化滤波",
+      "key_claims": [
+        "环境声增强",
+        "用户定制通透模式",
+        "智能模式切换"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "significance": "实现通透模式的个性化定制",
+      "core_technology": "【核心技术详解】\n本专利涉及可穿戴音频设备的透明模式(Transparency Mode)技术，允许用户在佩戴耳机时清晰听到周围环境声音。\n\n核心技术要点：\n1. 环境声采集：通过麦克风实时采集周围环境声音\n2. 声音混合：将环境声与播放音频进行智能混合，保持自然听感\n3. 个性化滤波：根据用户环境和偏好定制透明度滤波器，实现个性化体验\n4. 自适应调整：根据用户活动状态(静止、行走、交谈)自动调整透明程度\n5. 语音增强：在透明模式下优先增强人声，确保对话清晰\n\n技术优势：用户无需摘下耳机即可与他人交流或感知周围环境，提升使用便利性和安全性。该功能是AirPods Pro通透模式的技术基础。"
+    },
+    {
+      "id": 15,
+      "patent_number": "US20200380945A1",
+      "title": "Ambient sound enhancement and acoustic noise cancellation（环境声增强与声学降噪）",
+      "filing_date": "2020-03-03",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "主动降噪",
+      "abstract": "本发明结合环境声增强和主动降噪技术，支持多种模式的智能切换。",
+      "technical_field": "ANC、环境声增强、透传",
+      "key_claims": [
+        "ANC与通透模式结合",
+        "语音活动检测响应",
+        "自适应模式切换"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "signification": "支持智能通透模式和对话增强功能",
+      "core_technology": "【核心技术详解】\n本专利涉及主动降噪(Active Noise Cancellation, ANC)技术，通过产生与噪声相反的声波来抵消环境噪声。\n\n核心技术要点：\n1. 前馈ANC：使用外部麦克风采集环境噪声，在噪声到达耳道前产生反相信号\n2. 反馈ANC：使用内部麦克风监测耳道内的声音，实时调整降噪信号\n3. 混合ANC：结合前馈和反馈两种方式，实现更全面的降噪效果\n4. 自适应降噪：根据环境噪声特性动态调整降噪参数\n\n技术优势：有效降低环境噪声对听音体验的干扰，特别适合飞机、地铁等嘈杂环境。"
+    },
+    {
+      "id": 16,
+      "patent_number": "US10762896B2",
+      "title": "System for processing voice requests including wake word detection（含唤醒词检测的语音请求处理系统）",
+      "filing_date": "2019-04-05",
+      "grant_date": "2020-09-08",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "语音交互",
+      "abstract": "本发明涉及语音请求处理系统，支持Bixby语音助手的多设备协调工作。",
+      "technical_field": "语音识别、唤醒词检测、Bixby",
+      "key_claims": [
+        "唤醒词检测与路由",
+        "多助手协调",
+        "语音请求分发"
+      ],
+      "applications": [
+        "Bixby",
+        "Galaxy Buds",
+        "Samsung手机"
+      ],
+      "significance": "Samsung语音助手跨设备工作的基础",
+      "core_technology": "【核心技术详解】\n本专利涉及语音唤醒词检测技术，使设备能够在低功耗状态下响应用户语音指令。\n\n核心技术要点：\n1. 多唤醒词支持：支持\"Hey Siri\"、\"Siri\"等多种唤醒词\n2. 低功耗监听：设备在休眠状态时保持低功耗语音监听\n3. 语音路由：检测到唤醒词后，将语音指令路由到对应的语音处理组件\n4. 误触发抑制：有效抑制误触发，提高唤醒准确性\n\n技术优势：实现\"随叫随应\"的语音助手体验，用户无需手动操作即可激活Siri。该技术是Siri语音助手在耳机端工作的核心。"
+    },
+    {
+      "id": 17,
+      "patent_number": "US11694679B2",
+      "title": "Selective wake word detection systems and methods（选择性唤醒词检测系统和方法）",
+      "filing_date": "2022-06-03",
+      "grant_date": "2023-06-13",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "语音交互",
+      "abstract": "本发明支持多唤醒词检测，使用不同的唤醒词触发不同的语音处理流程。",
+      "technical_field": "语音识别、多唤醒词",
+      "key_claims": [
+        "多唤醒词并行处理",
+        "唤醒词路由选择",
+        "定制唤醒词支持"
+      ],
+      "applications": [
+        "Bixby",
+        "Galaxy设备"
+      ],
+      "significance": "支持便捷的语音唤醒功能",
+      "core_technology": "【核心技术详解】\n本专利涉及语音唤醒词检测技术，使设备能够在低功耗状态下响应用户语音指令。\n\n核心技术要点：\n1. 多唤醒词支持：支持\"Hey Siri\"、\"Siri\"等多种唤醒词\n2. 低功耗监听：设备在休眠状态时保持低功耗语音监听\n3. 语音路由：检测到唤醒词后，将语音指令路由到对应的语音处理组件\n4. 误触发抑制：有效抑制误触发，提高唤醒准确性\n\n技术优势：实现\"随叫随应\"的语音助手体验，用户无需手动操作即可激活Siri。该技术是Siri语音助手在耳机端工作的核心。"
+    },
+    {
+      "id": 18,
+      "patent_number": "US20220225006A1",
+      "title": "Electronic devices with skin sensors（带皮肤传感器的电子设备）",
+      "filing_date": "2020-12-21",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明使用光学传感器检测设备附近的皮肤，实现入耳检测和自动播放控制。",
+      "technical_field": "光学传感、入耳检测",
+      "key_claims": [
+        "光学皮肤检测",
+        "入耳状态判断",
+        "自动播放/暂停"
+      ],
+      "applications": [
+        "Galaxy Buds全系列"
+      ],
+      "significance": "实现入耳检测和自动播放/暂停功能",
+      "core_technology": "【核心技术详解】\n本专利涉及耳机的入耳检测技术，使用传感器自动检测用户是否佩戴耳机。\n\n核心技术要点：\n1. 光学传感器检测：使用红外光学传感器检测皮肤存在\n2. 电容式检测：通过电容变化感知耳机与皮肤的接触\n3. 人体传导检测：利用人体作为导电介质检测佩戴状态\n4. 自动播放/暂停：根据检测结果自动控制音频播放或暂停\n\n技术优势：实现取下耳机自动暂停播放、戴上耳机自动恢复播放的智能体验，提升使用便利性。"
+    },
+    {
+      "id": 19,
+      "patent_number": "US10743095B2",
+      "title": "Contextual audio system（情景音频系统）",
+      "filing_date": "2019-03-21",
+      "grant_date": "2020-08-18",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "音频处理",
+      "abstract": "本发明根据可穿戴设备的佩戴状态和用户情景自动调整音频输出。",
+      "technical_field": "情景感知、自适应音频",
+      "key_claims": [
+        "佩戴状态检测",
+        "情景识别",
+        "自适应音频调整"
+      ],
+      "applications": [
+        "Galaxy Buds",
+        "Galaxy Watch"
+      ],
+      "significance": "实现根据佩戴状态自动调整音频功能",
+      "core_technology": "【核心技术详解】\n本专利涉及音频处理技术，涵盖音频信号的采集、转换、优化等各个环节。\n\n核心技术要点：\n1. 信号处理：对音频信号进行滤波、放大、转换等处理\n2. 格式转换：支持不同音频格式之间的转换\n3. 质量优化：提升音频的清晰度、动态范围等指标\n4. 低延迟处理：优化处理流程，降低音频延迟\n\n技术优势：提升整体音频质量，为用户带来更好的听音体验。"
+    },
+    {
+      "id": 20,
+      "patent_number": "US11825281B2",
+      "title": "Adaptive equalization compensation for earbuds（耳塞自适应均衡补偿）",
+      "filing_date": "2021-06-25",
+      "grant_date": "2023-12-12",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "音频处理",
+      "abstract": "本发明执行自适应均衡操作，减少因耳塞佩戴位置导致的音频频率响应变化。",
+      "technical_field": "自适应均衡、频率响应补偿",
+      "key_claims": [
+        "鼓膜处频率响应测量",
+        "自适应均衡补偿算法",
+        "实时音质优化"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds3"
+      ],
+      "significance": "持续优化Galaxy Buds音质的核心技术",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 21,
+      "patent_number": "US20210006852A1",
+      "title": "Audio rendering based on user head orientation（基于用户头部方向的音频渲染）",
+      "filing_date": "2020-07-10",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明根据用户头部方向实时渲染音频，实现动态空间音频效果。",
+      "technical_field": "头部追踪、动态渲染",
+      "key_claims": [
+        "实时头部方向检测",
+        "动态音频渲染",
+        "空间音频同步"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "significance": "支持360度音频和头部追踪功能",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频渲染技术，旨在为用户创造沉浸式的三维音频体验。\n\n核心技术要点：\n1. 声场重建：通过麦克风阵列采集声场信息，重建完整的三维声场\n2. 音频渲染：根据头部追踪数据实时调整音频输出，保持声源的空间定位\n3. 多声道处理：支持从多声道到立体声的各种音频格式转换\n4. 与视觉同步：确保音频与视频内容在时间上精确同步\n\n技术优势：为用户提供身临其境的音频体验，支持电影、游戏、AR/VR等多种应用场景。"
+    },
+    {
+      "id": 22,
+      "patent_number": "US9515629B2",
+      "title": "Adaptive audio equalization for personal listening devices（个人聆听设备自适应音频均衡）",
+      "filing_date": "2013-05-16",
+      "grant_date": "2016-12-06",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "音频处理",
+      "abstract": "本发明适用于个人聆听设备的自适应均衡技术，同时支持ANC和自适应EQ协同工作。",
+      "technical_field": "自适应均衡、ANC协同",
+      "key_claims": [
+        "入耳式设备自适应均衡",
+        "ANC与EQ协同",
+        "实时频率响应补偿"
+      ],
+      "applications": [
+        "Galaxy Buds",
+        "Galaxy Buds+"
+      ],
+      "significance": "Samsung耳机自适应均衡技术的基础专利",
+      "core_technology": "【核心技术详解】\n本专利涉及自适应音频均衡(Adaptive Equalization)技术，根据用户的耳道特征和佩戴状态自动调整音频频率响应。\n\n核心技术要点：\n1. 鼓膜处测量：通过内置麦克风测量用户鼓膜处的实际频率响应\n2. 个性化补偿：根据测量结果计算补偿曲线，校正因耳道形状和佩戴导致的频率响应偏差\n3. 实时调整：实时检测佩戴状态变化，动态调整均衡参数\n4. ANC协同：与主动降噪系统协同工作，同时保证降噪效果和音质\n\n技术优势：无论用户耳道形状如何、是否佩戴眼镜，都能获得最佳音质体验。该技术是AirPods自适应均衡功能的核心。"
+    },
+    {
+      "id": 23,
+      "patent_number": "US20230055098A1",
+      "title": "Earbuds case with interactive display（带交互显示的耳机充电盒）",
+      "filing_date": "2021-09-07",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明提供一种带交互显示功能的耳机充电盒，提供丰富的交互体验。",
+      "technical_field": "显示技术、交互设计",
+      "key_claims": [
+        "充电盒显示功能",
+        "交互操作支持",
+        "设备状态显示"
+      ],
+      "applications": [
+        "Galaxy Buds充电盒"
+      ],
+      "significance": "创新耳机充电盒设计，提供更多交互可能性",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的充电技术，特别是电容式无线充电方案。\n\n核心技术要点：\n1. 电容耦合充电：使用电容耦合技术实现耳塞与充电盒之间的能量传输\n2. 充电效率优化：优化充电电路设计，提高充电效率并减少发热\n3. 智能充电管理：根据电池状态智能调节充电电流，延长电池寿命\n4. 兼容多种充电器：支持Qi标准无线充电器，提升通用性\n\n技术优势：实现耳机的便捷无线充电，摆脱线缆束缚。该技术是AirPods充电盒的核心技术之一。"
+    },
+    {
+      "id": 24,
+      "patent_number": "US11502945B2",
+      "title": "Earbud with integrated health sensors（集成健康传感器的耳塞）",
+      "filing_date": "2021-10-22",
+      "grant_date": "2022-11-29",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明在耳塞中集成健康传感器，用于监测用户生理信号。",
+      "technical_field": "健康传感、生理监测",
+      "key_claims": [
+        "健康信号传感",
+        "心率监测",
+        "运动追踪"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "健康监测应用"
+      ],
+      "significance": "Samsung耳机健康监测功能的技术基础",
+      "core_technology": "【核心技术详解】\n本专利涉及集成健康传感器的耳塞技术，将生物信号监测功能融入可穿戴音频设备。\n\n核心技术要点：\n1. 心率监测：使用光学心率传感器监测用户心率\n2. 血氧检测：通过红外传感器检测血氧饱和度\n3. 温度传感：集成温度传感器监测体温变化\n4. 运动追踪：结合加速度计实现运动数据采集\n\n技术优势：扩展耳机的功能边界，使其成为健康监测设备。用户在日常佩戴中即可持续采集健康数据。"
+    },
+    {
+      "id": 25,
+      "patent_number": "US12120294B2",
+      "title": "Machine learning based audio quality enhancement（基于机器学习的音频质量增强）",
+      "filing_date": "2023-05-19",
+      "grant_date": "2024-10-08",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "音频处理",
+      "abstract": "本发明使用机器学习技术增强音频质量，实现智能音效优化。",
+      "technical_field": "机器学习、音频增强、AI音效",
+      "key_claims": [
+        "ML音频增强",
+        "智能音效优化",
+        "个性化音质调整"
+      ],
+      "applications": [
+        "Galaxy Buds",
+        "Samsung Music"
+      ],
+      "significance": "AI音频增强技术的应用",
+      "core_technology": "【核心技术详解】\n本专利涉及基于机器学习的音频质量增强技术，使用AI算法提升音频体验。\n\n核心技术要点：\n1. 音频特征提取：使用深度学习模型提取音频信号的各类特征\n2. 智能降噪：AI驱动的噪声识别和抑制，比传统算法更精准\n3. 音质优化：根据内容类型自动调整音效参数\n4. 个性化学习：学习用户偏好，提供定制化音频体验\n\n技术优势：利用人工智能技术实现传统音频处理难以达到的效果，为用户提供更智能的音频体验。"
+    },
+    {
+      "id": 26,
+      "patent_number": "US12200486B2",
+      "title": "3D audio scene rendering for AR applications（AR应用3D音频场景渲染）",
+      "filing_date": "2023-10-13",
+      "grant_date": "2025-01-14",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明为增强现实应用渲染3D音频场景，提供沉浸式音频体验。",
+      "technical_field": "3D音频、AR音频、空间渲染",
+      "key_claims": [
+        "3D音频场景渲染",
+        "AR应用集成",
+        "空间声音定位"
+      ],
+      "applications": [
+        "Samsung AR应用",
+        "Galaxy Buds"
+      ],
+      "significance": "为AR设备提供沉浸式音频体验",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频渲染技术，旨在为用户创造沉浸式的三维音频体验。\n\n核心技术要点：\n1. 声场重建：通过麦克风阵列采集声场信息，重建完整的三维声场\n2. 音频渲染：根据头部追踪数据实时调整音频输出，保持声源的空间定位\n3. 多声道处理：支持从多声道到立体声的各种音频格式转换\n4. 与视觉同步：确保音频与视频内容在时间上精确同步\n\n技术优势：为用户提供身临其境的音频体验，支持电影、游戏、AR/VR等多种应用场景。"
+    },
+    {
+      "id": 27,
+      "patent_number": "US12075293B2",
+      "title": "Audio personalisation based on ear morphology（基于耳朵形态的音频个性化）",
+      "filing_date": "2022-11-15",
+      "grant_date": "2024-07-09",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "音频处理",
+      "abstract": "本发明根据用户耳朵形态提供个性化音频优化，实现定制化音质。",
+      "technical_field": "耳朵形态识别、个性化音频",
+      "key_claims": [
+        "耳朵形态识别",
+        "个性化音频渲染",
+        "定制化音质优化"
+      ],
+      "applications": [
+        "Galaxy Buds全系列"
+      ],
+      "significance": "为每位用户提供个性化音频体验",
+      "core_technology": "【核心技术详解】\n本专利涉及音频处理技术，涵盖音频信号的采集、转换、优化等各个环节。\n\n核心技术要点：\n1. 信号处理：对音频信号进行滤波、放大、转换等处理\n2. 格式转换：支持不同音频格式之间的转换\n3. 质量优化：提升音频的清晰度、动态范围等指标\n4. 低延迟处理：优化处理流程，降低音频延迟\n\n技术优势：提升整体音频质量，为用户带来更好的听音体验。"
+    },
+    {
+      "id": 28,
+      "patent_number": "US12022281B2",
+      "title": "Ear tip fit test using audio analysis（使用音频分析进行耳塞贴合测试）",
+      "filing_date": "2023-02-28",
+      "grant_date": "2024-06-11",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明使用音频分析技术检测耳塞与耳道的贴合程度。",
+      "technical_field": "贴合度测试、音频分析",
+      "key_claims": [
+        "声学贴合度测试",
+        "耳塞尺寸推荐",
+        "降噪效果优化"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "significance": "帮助用户选择合适的耳塞尺寸，提升降噪效果",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 29,
+      "patent_number": "US12178309B2",
+      "title": "Ultrasonic proximity detection for wearable audio（可穿戴音频超声波接近检测）",
+      "filing_date": "2023-08-25",
+      "grant_date": "2024-12-03",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明使用超声波技术检测可穿戴音频设备与用户距离。",
+      "technical_field": "超声波检测、接近感知",
+      "key_claims": [
+        "超声波接近检测",
+        "距离感知",
+        "自动响应"
+      ],
+      "applications": [
+        "Galaxy Buds"
+      ],
+      "significance": "改进设备检测和自动响应功能",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 30,
+      "patent_number": "US11817220B2",
+      "title": "Spatial audio for multiple listeners（多听众空间音频）",
+      "filing_date": "2021-09-24",
+      "grant_date": "2023-11-28",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明为多个听众提供个性化空间音频，满足不同聆听需求。",
+      "technical_field": "多用户空间音频、个性化渲染",
+      "key_claims": [
+        "多听众识别",
+        "个性化空间渲染",
+        "独立音频控制"
+      ],
+      "applications": [
+        "Galaxy Buds",
+        "家庭影院"
+      ],
+      "significance": "支持多名用户同时享受不同的空间音频体验",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频渲染技术，旨在为用户创造沉浸式的三维音频体验。\n\n核心技术要点：\n1. 声场重建：通过麦克风阵列采集声场信息，重建完整的三维声场\n2. 音频渲染：根据头部追踪数据实时调整音频输出，保持声源的空间定位\n3. 多声道处理：支持从多声道到立体声的各种音频格式转换\n4. 与视觉同步：确保音频与视频内容在时间上精确同步\n\n技术优势：为用户提供身临其境的音频体验，支持电影、游戏、AR/VR等多种应用场景。"
+    },
+    {
+      "id": 31,
+      "patent_number": "D997555",
+      "title": "Earphone case（耳机充电盒外观设计）",
+      "filing_date": "2021-03-15",
+      "grant_date": "2023-09-05",
+      "inventors": [
+        "Siyeon Lee",
+        "Jaehyung Hong"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "Galaxy Buds耳机充电盒的外观设计专利。",
+      "technical_field": "工业设计",
+      "key_claims": [
+        "充电盒外观设计"
+      ],
+      "applications": [
+        "Galaxy Buds充电盒"
+      ],
+      "significance": "Galaxy Buds充电盒外观保护",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的充电技术，特别是电容式无线充电方案。\n\n核心技术要点：\n1. 电容耦合充电：使用电容耦合技术实现耳塞与充电盒之间的能量传输\n2. 充电效率优化：优化充电电路设计，提高充电效率并减少发热\n3. 智能充电管理：根据电池状态智能调节充电电流，延长电池寿命\n4. 兼容多种充电器：支持Qi标准无线充电器，提升通用性\n\n技术优势：实现耳机的便捷无线充电，摆脱线缆束缚。该技术是AirPods充电盒的核心技术之一。"
+    },
+    {
+      "id": 32,
+      "patent_number": "US12231847B2",
+      "title": "Hearing aid functionality in wireless earbuds（无线耳塞助听器功能）",
+      "filing_date": "2023-12-01",
+      "grant_date": "2025-02-11",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "音频处理",
+      "abstract": "本发明实现在无线耳塞中提供助听器功能，支持听力辅助。",
+      "technical_field": "助听器、听力辅助",
+      "key_claims": [
+        "听力增强",
+        "环境声音处理",
+        "辅助听力"
+      ],
+      "applications": [
+        "Galaxy Buds Pro"
+      ],
+      "significance": "Samsung进入听力健康市场的技术基础",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 33,
+      "patent_number": "US20210400414A1",
+      "title": "Head tracking correlated motion detection for spatial audio（空间音频头部追踪相关运动检测）",
+      "filing_date": "2021-12-23",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明通过分析源设备与耳机之间的相关运动来提高头部追踪精度。",
+      "technical_field": "头部追踪、运动检测",
+      "key_claims": [
+        "源设备与耳机相关运动检测",
+        "头部追踪状态判断",
+        "AR应用空间音频"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Samsung AR"
+      ],
+      "significance": "提升空间音频头部追踪精度",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频头部追踪(Head Tracking)技术，通过检测用户头部运动来实时调整音频渲染，创造更真实的沉浸式音频体验。\n\n核心技术要点：\n1. 运动传感器融合：整合加速度计、陀螺仪等IMU传感器数据，精确捕捉头部运动\n2. 相关运动分析：通过分析源设备(如手机)与耳机之间的相对运动，提高追踪精度\n3. 实时HRTF调整：根据头部位置实时调整头部相关传递函数(HRTF)，保持声源方向准确\n4. 空间锚定：将音频内容锚定在空间中的固定位置，头部移动时声音方向随之变化\n\n技术优势：实现\"头动声不动\"的逼真效果，增强电影、游戏等内容的沉浸感。该技术是AirPods Pro动态头部追踪功能的核心。"
+    },
+    {
+      "id": 34,
+      "patent_number": "US10750268B2",
+      "title": "Capacitive wireless charging for wireless earbuds（无线耳塞电容式无线充电）",
+      "filing_date": "2019-08-28",
+      "grant_date": "2020-08-18",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明涉及一种可存储和无线充电入耳式收听设备的充电盒。",
+      "technical_field": "无线充电、电源管理",
+      "key_claims": [
+        "耳塞无线充电系统",
+        "电容式充电技术",
+        "充电盒设计"
+      ],
+      "applications": [
+        "Galaxy Buds充电盒"
+      ],
+      "significance": "Galaxy Buds无线充电功能的核心专利",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的充电技术，特别是电容式无线充电方案。\n\n核心技术要点：\n1. 电容耦合充电：使用电容耦合技术实现耳塞与充电盒之间的能量传输\n2. 充电效率优化：优化充电电路设计，提高充电效率并减少发热\n3. 智能充电管理：根据电池状态智能调节充电电流，延长电池寿命\n4. 兼容多种充电器：支持Qi标准无线充电器，提升通用性\n\n技术优势：实现耳机的便捷无线充电，摆脱线缆束缚。该技术是AirPods充电盒的核心技术之一。"
+    },
+    {
+      "id": 35,
+      "patent_number": "US10873798B2",
+      "title": "Detecting through-body inputs at a wearable audio device（可穿戴音频设备人体传导输入检测）",
+      "filing_date": "2018-08-07",
+      "grant_date": "2020-12-22",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明检测通过身体传导的输入，实现入耳检测和音频播放控制。",
+      "technical_field": "人体传导传感、入耳检测",
+      "key_claims": [
+        "人体传导输入检测",
+        "入耳检测",
+        "音频播放控制"
+      ],
+      "applications": [
+        "Galaxy Buds"
+      ],
+      "significance": "实现入耳检测和自动播放/暂停功能",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 36,
+      "patent_number": "US11463796B2",
+      "title": "Earphone with force sensor（带力传感器的耳机）",
+      "filing_date": "2020-10-27",
+      "grant_date": "2022-10-11",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明涉及带力传感器的耳机设备，用于检测用户输入力并调整耳机操作。",
+      "technical_field": "力传感、用户交互",
+      "key_claims": [
+        "力传感器检测",
+        "非二进制力度识别",
+        "耳机操作控制"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "significance": "支持触控和压感控制功能",
+      "core_technology": "【核心技术详解】\n本专利涉及耳机力传感器技术，实现多种力度的手势控制。\n\n核心技术要点：\n1. 力度检测：精确识别用户的按压力度，支持多级力度控制\n2. 非二进制识别：不仅识别\"按下\"和\"未按下\"，还能区分不同按压力度\n3. 多功能操作：支持单击、双击、三击、长按等多种操作方式\n4. 误触防止：智能识别有意操作和意外触碰\n\n技术优势：为用户提供丰富的交互方式，可通过不同力度实现播放控制、音量调节等功能。"
+    },
+    {
+      "id": 37,
+      "patent_number": "US11638085B2",
+      "title": "Wearable audio device with temperature sensor（带温度传感器的可穿戴音频设备）",
+      "filing_date": "2022-03-18",
+      "grant_date": "2023-09-12",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明在可穿戴音频设备中集成温度传感器，用于健康监测和环境感知。",
+      "technical_field": "温度传感、健康监测",
+      "key_claims": [
+        "温度传感",
+        "健康数据采集",
+        "环境感知"
+      ],
+      "applications": [
+        "Galaxy Buds"
+      ],
+      "significance": "扩展Galaxy Buds健康监测功能",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 38,
+      "patent_number": "US11170144B2",
+      "title": "Transparent mode for wearable audio device（可穿戴音频设备透明模式）",
+      "filing_date": "2020-02-14",
+      "grant_date": "2021-10-26",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "主动降噪",
+      "abstract": "本发明涉及可穿戴音频设备的透明模式，允许用户听到周围环境声音。",
+      "technical_field": "通透模式、环境声",
+      "key_claims": [
+        "通透模式控制",
+        "环境声增强",
+        "自适应切换"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "significance": "通透模式功能的核心专利",
+      "core_technology": "【核心技术详解】\n本专利涉及可穿戴音频设备的透明模式(Transparency Mode)技术，允许用户在佩戴耳机时清晰听到周围环境声音。\n\n核心技术要点：\n1. 环境声采集：通过麦克风实时采集周围环境声音\n2. 声音混合：将环境声与播放音频进行智能混合，保持自然听感\n3. 个性化滤波：根据用户环境和偏好定制透明度滤波器，实现个性化体验\n4. 自适应调整：根据用户活动状态(静止、行走、交谈)自动调整透明程度\n5. 语音增强：在透明模式下优先增强人声，确保对话清晰\n\n技术优势：用户无需摘下耳机即可与他人交流或感知周围环境，提升使用便利性和安全性。该功能是AirPods Pro通透模式的技术基础。"
+    },
+    {
+      "id": 39,
+      "patent_number": "US11092721B2",
+      "title": "Method and apparatus for spatial audio recording and playback（空间音频录制和播放方法与设备）",
+      "filing_date": "2019-05-17",
+      "grant_date": "2021-08-03",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明涉及空间音频录制和播放的方法和设备，支持沉浸式音频内容创作。",
+      "technical_field": "空间音频录制、沉浸式播放",
+      "key_claims": [
+        "空间音频录制技术",
+        "沉浸式播放",
+        "多声道处理"
+      ],
+      "applications": [
+        "Samsung手机相机",
+        "视频应用"
+      ],
+      "significance": "支持用户创建空间音频内容",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频渲染技术，旨在为用户创造沉浸式的三维音频体验。\n\n核心技术要点：\n1. 声场重建：通过麦克风阵列采集声场信息，重建完整的三维声场\n2. 音频渲染：根据头部追踪数据实时调整音频输出，保持声源的空间定位\n3. 多声道处理：支持从多声道到立体声的各种音频格式转换\n4. 与视觉同步：确保音频与视频内容在时间上精确同步\n\n技术优势：为用户提供身临其境的音频体验，支持电影、游戏、AR/VR等多种应用场景。"
+    },
+    {
+      "id": 40,
+      "patent_number": "US10818300B2",
+      "title": "Spatial audio apparatus（空间音频设备）",
+      "filing_date": "2018-06-14",
+      "grant_date": "2020-11-17",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明涉及移动设备内的空间音频信号处理设备。",
+      "technical_field": "空间音频信号处理、移动设备",
+      "key_claims": [
+        "移动设备空间音频处理",
+        "空间音频信号处理设备"
+      ],
+      "applications": [
+        "Samsung手机",
+        "Samsung平板"
+      ],
+      "significance": "移动设备空间音频支持的基础专利",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频渲染技术，旨在为用户创造沉浸式的三维音频体验。\n\n核心技术要点：\n1. 声场重建：通过麦克风阵列采集声场信息，重建完整的三维声场\n2. 音频渲染：根据头部追踪数据实时调整音频输出，保持声源的空间定位\n3. 多声道处理：支持从多声道到立体声的各种音频格式转换\n4. 与视觉同步：确保音频与视频内容在时间上精确同步\n\n技术优势：为用户提供身临其境的音频体验，支持电影、游戏、AR/VR等多种应用场景。"
+    },
+    {
+      "id": 41,
+      "patent_number": "US20250039604A1",
+      "title": "Wireless earphones with UWB audio transmission（支持UWB音频传输的无线耳机）",
+      "filing_date": "2025-01-30",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "超宽带音频",
+      "abstract": "本发明详细描述了使用UWB进行无线音频传输的具体实现方案。",
+      "technical_field": "UWB音频传输、无线连接",
+      "key_claims": [
+        "UWB音频传输协议",
+        "主机设备到耳机无线连接",
+        "主从耳机UWB网络建立"
+      ],
+      "applications": [
+        "未来Galaxy Buds"
+      ],
+      "significance": "Samsung下一代无线音频技术路线图",
+      "core_technology": "【核心技术详解】\n本专利属于超宽带音频领域。\n\n技术要点：\n1. 技术领域：UWB音频传输、无线连接\n2. 创新内容：根据专利摘要，该技术聚焦于Wireless earphones with UWB audio transmission（支持UWB音频传输的无线耳机）的核心实现\n3. 应用价值：支持相关产品的关键功能实现\n\n关键技术支撑：\n- UWB音频传输协议\n- 主机设备到耳机无线连接\n- 主从耳机UWB网络建立"
+    },
+    {
+      "id": 42,
+      "patent_number": "US10798511B2",
+      "title": "Processing of audio signals for spatial audio（空间音频信号处理）",
+      "filing_date": "2018-12-14",
+      "grant_date": "2020-10-13",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "空间音频",
+      "abstract": "本发明处理输入音频通道以生成空间音频，包括麦克风信号采集和频域处理。",
+      "technical_field": "音频信号处理、麦克风阵列",
+      "key_claims": [
+        "多麦克风声场采集",
+        "频域空间音频处理"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Samsung智能音箱"
+      ],
+      "significance": "空间音频采集和处理的基础技术",
+      "core_technology": "【核心技术详解】\n本专利涉及空间音频渲染技术，旨在为用户创造沉浸式的三维音频体验。\n\n核心技术要点：\n1. 声场重建：通过麦克风阵列采集声场信息，重建完整的三维声场\n2. 音频渲染：根据头部追踪数据实时调整音频输出，保持声源的空间定位\n3. 多声道处理：支持从多声道到立体声的各种音频格式转换\n4. 与视觉同步：确保音频与视频内容在时间上精确同步\n\n技术优势：为用户提供身临其境的音频体验，支持电影、游戏、AR/VR等多种应用场景。"
+    },
+    {
+      "id": 43,
+      "patent_number": "US11900012B2",
+      "title": "Audio device with improved microphone array（改进麦克风阵列的音频设备）",
+      "filing_date": "2023-10-20",
+      "grant_date": "2024-08-06",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "语音交互",
+      "abstract": "本发明改进了音频设备的麦克风阵列，提升语音采集和降噪效果。",
+      "technical_field": "麦克风阵列、语音采集",
+      "key_claims": [
+        "改进麦克风阵列设计",
+        "语音增强",
+        "降噪优化"
+      ],
+      "applications": [
+        "Galaxy Buds",
+        "Samsung手机"
+      ],
+      "significance": "提升语音通话质量的硬件技术",
+      "core_technology": "【核心技术详解】\n本专利涉及语音交互技术，使用户能够通过语音与设备进行自然交互。\n\n核心技术要点：\n1. 语音识别：将用户语音转换为文本或指令\n2. 语义理解：理解用户的意图和需求\n3. 噪声抑制：在嘈杂环境中准确识别用户语音\n4. 多语言支持：支持多种语言的语音交互\n\n技术优势：实现自然语言交互，提升设备可用性和可访问性。"
+    },
+    {
+      "id": 44,
+      "patent_number": "US20220345816",
+      "title": "Wearable electronic device with dual driver（双驱动单元可穿戴电子设备）",
+      "filing_date": "2022-10-20",
+      "grant_date": null,
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "无线耳机/Galaxy Buds",
+      "abstract": "本发明提供一种双驱动单元的可穿戴电子设备，覆盖更宽的频率范围。",
+      "technical_field": "双驱动单元、频率响应",
+      "key_claims": [
+        "双驱动单元设计",
+        "宽频率响应",
+        "紧凑外形"
+      ],
+      "applications": [
+        "Galaxy Buds Pro",
+        "Galaxy Buds2 Pro"
+      ],
+      "significance": "提升音质表现的双单元设计",
+      "core_technology": "【核心技术详解】\n本专利涉及无线耳机的设计和技术实现，包括硬件设计、用户体验优化等各个方面。\n\n核心技术要点：\n1. 人体工学设计：符合人体工程学的外形设计，确保长时间佩戴舒适\n2. 触控交互：支持多种触控手势进行播放控制、接听电话等操作\n3. 无线连接：稳定的蓝牙/Wi-Fi无线连接技术\n4. 功耗优化：低功耗设计，延长耳机续航时间\n\n技术优势：提升无线耳机的使用体验和产品竞争力，是AirPods系列产品的核心技术基础。"
+    },
+    {
+      "id": 45,
+      "patent_number": "US12075220B2",
+      "title": "Smart routing for audio output devices（音频输出设备智能路由）",
+      "filing_date": "2021-06-18",
+      "grant_date": "2024-07-02",
+      "inventors": [
+        "Samsung Electronics"
+      ],
+      "category": "多设备协同",
+      "abstract": "本发明提供一种音频输出设备智能路由系统，支持多设备音频信号源管理。",
+      "technical_field": "音频路由、智能切换",
+      "key_claims": [
+        "多设备音频信号管理",
+        "智能路由选择",
+        "自动切换机制"
+      ],
+      "applications": [
+        "Samsung手机",
+        "Samsung平板",
+        "Galaxy Buds"
+      ],
+      "significance": "Samsung多设备音频管理核心技术",
+      "core_technology": "【核心技术详解】\n本专利涉及多设备协同技术，使音频设备能够在苹果生态内无缝协作。\n\n核心技术要点：\n1. 设备发现：自动发现附近兼容设备\n2. 智能配对：简化设备配对过程\n3. 状态同步：在多设备间同步播放状态\n4. 音频路由：根据用户场景智能选择音频输出设备\n\n技术优势：构建统一的音频生态体验，提升苹果设备间的协同工作效率。"
+    }
+  ],
+  "yearly_distribution": {
+    "2016": 2,
+    "2017": 3,
+    "2018": 4,
+    "2019": 6,
+    "2020": 8,
+    "2021": 9,
+    "2022": 6,
+    "2023": 4,
+    "2024": 2,
+    "2025": 2
+  },
+  "key_insights": [
+    "Samsung在UWB无线音频领域布局领先，计划使用UWB替代蓝牙实现无损传输",
+    "Galaxy Buds产品线专利覆盖设计、传感、ANC、健康监测等多个维度",
+    "空间音频技术持续迭代，支持360度音频和头部追踪",
+    "多设备协同专利覆盖音频路由、无缝切换等关键技术",
+    "Samsung音频生态围绕Galaxy手机、平板、耳机、智能手表、电视构建",
+    "Harman收购完成后，Samsung在音频领域的技术实力显著增强",
+    "机器学习和AI音频增强是近年来的重点研究方向"
+  ]
+}

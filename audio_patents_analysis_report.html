@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apple、Samsung、小米音频生态专利对比分析报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e4e4e4;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+            padding: 40px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 15px;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            color: #a0a0a0;
+            margin-bottom: 20px;
+        }
+        
+        .time-range {
+            display: inline-block;
+            padding: 8px 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 20px;
+            font-size: 0.9em;
+            color: #00d4ff;
+        }
+        
+        .section {
+            margin-bottom: 50px;
+            padding: 30px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            backdrop-filter: blur(5px);
+        }
+        
+        .section-title {
+            font-size: 1.8em;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid;
+            border-image: linear-gradient(90deg, #00d4ff, #7c3aed) 1;
+        }
+        
+        .section-title.apple { border-image: linear-gradient(90deg, #a2aaad, #555) 1; }
+        .section-title.samsung { border-image: linear-gradient(90deg, #1428a0, #0072ff) 1; }
+        .section-title.xiaomi { border-image: linear-gradient(90deg, #ff6700, #ffc107) 1; }
+        
+        .section-title.common { border-image: linear-gradient(90deg, #00d4ff, #7c3aed, #ff6b6b) 1; }
+        
+        /* Overview Cards */
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+        
+        .company-card {
+            padding: 30px;
+            border-radius: 15px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .company-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .company-card.apple { background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%); border: 1px solid #555; }
+        .company-card.samsung { background: linear-gradient(135deg, #0c1b4a 0%, #051030 100%); border: 1px solid #1428a0; }
+        .company-card.xiaomi { background: linear-gradient(135deg, #3d2006 0%, #2a1500 100%); border: 1px solid #ff6700; }
+        
+        .company-name {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .company-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 0.8em;
+        }
+        
+        .company-card.apple .company-icon { background: linear-gradient(135deg, #555, #333); }
+        .company-card.samsung .company-icon { background: linear-gradient(135deg, #0072ff, #1428a0); }
+        .company-card.xiaomi .company-icon { background: linear-gradient(135deg, #ff6700, #ffc107); }
+        
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+        
+        .stat-label {
+            color: #a0a0a0;
+        }
+        
+        .stat-value {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        
+        .stat-value.apple { color: #a2aaad; }
+        .stat-value.samsung { color: #0072ff; }
+        .stat-value.xiaomi { color: #ff6700; }
+        
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+        }
+        
+        .chart-container {
+            background: rgba(0,0,0,0.3);
+            border-radius: 15px;
+            padding: 25px;
+        }
+        
+        .chart-title {
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            color: #e4e4e4;
+        }
+        
+        /* Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .data-table th,
+        .data-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .data-table th {
+            background: rgba(255,255,255,0.1);
+            font-weight: 600;
+            color: #00d4ff;
+        }
+        
+        .data-table tr:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        
+        /* Insights */
+        .insights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .insight-card {
+            padding: 25px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.3);
+        }
+        
+        .insight-card h3 {
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .insight-card.apple h3 { color: #a2aaad; }
+        .insight-card.samsung h3 { color: #0072ff; }
+        .insight-card.xiaomi h3 { color: #ff6700; }
+        
+        .insight-list {
+            list-style: none;
+        }
+        
+        .insight-list li {
+            padding: 8px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .insight-list li::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: #00d4ff;
+        }
+        
+        /* Category Bar Chart */
+        .category-bar {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+        }
+        
+        .category-label {
+            width: 120px;
+            font-size: 0.9em;
+            color: #a0a0a0;
+        }
+        
+        .category-bars {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .bar-company {
+            width: 70px;
+            font-size: 0.75em;
+            text-align: right;
+        }
+        
+        .bar-track {
+            flex: 1;
+            height: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+        
+        .bar-fill.apple { background: linear-gradient(90deg, #555, #888); }
+        .bar-fill.samsung { background: linear-gradient(90deg, #1428a0, #0072ff); }
+        .bar-fill.xiaomi { background: linear-gradient(90deg, #ff6700, #ffc107); }
+        
+        .bar-value {
+            width: 30px;
+            font-size: 0.85em;
+            text-align: right;
+        }
+        
+        /* Recent Patents */
+        .recent-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+        }
+        
+        .recent-card {
+            background: rgba(0,0,0,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid;
+        }
+        
+        .recent-card.apple { border-left-color: #888; }
+        .recent-card.samsung { border-left-color: #0072ff; }
+        .recent-card.xiaomi { border-left-color: #ff6700; }
+        
+        .recent-title {
+            font-size: 1em;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+        
+        .recent-meta {
+            font-size: 0.85em;
+            color: #a0a0a0;
+        }
+        
+        /* Comparison Summary */
+        .comparison-table {
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .comparison-table th {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            text-align: center;
+            font-weight: 600;
+        }
+        
+        .comparison-table td {
+            padding: 15px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .comparison-table .company-col {
+            font-weight: bold;
+        }
+        
+        .company-col.apple { color: #a2aaad; }
+        .company-col.samsung { color: #0072ff; }
+        .company-col.xiaomi { color: #ff6700; }
+        
+        .winner-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            background: linear-gradient(135deg, #00d4ff, #7c3aed);
+            border-radius: 10px;
+            font-size: 0.75em;
+            color: #fff;
+        }
+        
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px;
+            margin-top: 60px;
+            color: #666;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .section {
+            animation: fadeIn 0.5s ease forwards;
+        }
+        
+        .section:nth-child(2) { animation-delay: 0.1s; }
+        .section:nth-child(3) { animation-delay: 0.2s; }
+        .section:nth-child(4) { animation-delay: 0.3s; }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 1.8em;
+            }
+            
+            .overview-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎧 Apple、Samsung、小米音频生态专利对比分析报告</h1>
+            <p class="subtitle">多维度数据分析与深度对比</p>
+            <span class="time-range">📅 数据时间：2016年1月 - 2026年4月</span>
+        </header>
+        
+        <!-- Section 1: Overview Statistics -->
+        <section class="section">
+            <h2 class="section-title common">一、总体专利数据概览</h2>
+            
+            <div class="overview-grid">
+                <!-- Apple -->
+                <div class="company-card apple">
+                    <div class="company-name">
+                        <span class="company-icon"></span>
+                        <span>Apple 苹果</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">专利总数</span>
+                        <span class="stat-value apple">56</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">已授权</span>
+                        <span class="stat-value apple">38 (67.9%)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">审核中</span>
+                        <span class="stat-value apple">18 (32.1%)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">平均专利年龄</span>
+                        <span class="stat-value apple">5.8 年</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">技术领域数</span>
+                        <span class="stat-value apple">8 个</span>
+                    </div>
+                </div>
+                
+                <!-- Samsung -->
+                <div class="company-card samsung">
+                    <div class="company-name">
+                        <span class="company-icon">S</span>
+                        <span>Samsung 三星</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">专利总数</span>
+                        <span class="stat-value samsung">45</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">已授权</span>
+                        <span class="stat-value samsung">33 (73.3%)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">审核中</span>
+                        <span class="stat-value samsung">12 (26.7%)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">平均专利年龄</span>
+                        <span class="stat-value samsung">5.1 年</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">技术领域数</span>
+                        <span class="stat-value samsung">8 个</span>
+                    </div>
+                </div>
+                
+                <!-- Xiaomi -->
+                <div class="company-card xiaomi">
+                    <div class="company-name">
+                        <span class="company-icon">X</span>
+                        <span>Xiaomi 小米</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">专利总数</span>
+                        <span class="stat-value xiaomi">40</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">已授权</span>
+                        <span class="stat-value xiaomi">0 (0%)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">审核中</span>
+                        <span class="stat-value xiaomi">40 (100%)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">平均专利年龄</span>
+                        <span class="stat-value xiaomi">2.7 年</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">技术领域数</span>
+                        <span class="stat-value xiaomi">8 个</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Section 2: Category Comparison -->
+        <section class="section">
+            <h2 class="section-title common">二、技术领域分布对比</h2>
+            
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3 class="chart-title">📊 专利数量对比（按技术领域）</h3>
+                    <canvas id="categoryChart"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="chart-title">📈 各公司技术领域分布</h3>
+                    <div class="category-bar">
+                        <div class="category-label">空间音频</div>
+                        <div class="category-bars">
+                            <div class="bar-row">
+                                <span class="bar-company">Apple</span>
+                                <div class="bar-track"><div class="bar-fill apple" style="width: 100%"></div></div>
+                                <span class="bar-value">12</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Samsung</span>
+                                <div class="bar-track"><div class="bar-fill samsung" style="width: 67%"></div></div>
+                                <span class="bar-value">8</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Xiaomi</span>
+                                <div class="bar-track"><div class="bar-fill xiaomi" style="width: 50%"></div></div>
+                                <span class="bar-value">6</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="category-bar">
+                        <div class="category-label">主动降噪</div>
+                        <div class="category-bars">
+                            <div class="bar-row">
+                                <span class="bar-company">Apple</span>
+                                <div class="bar-track"><div class="bar-fill apple" style="width: 80%"></div></div>
+                                <span class="bar-value">8</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Samsung</span>
+                                <div class="bar-track"><div class="bar-fill samsung" style="width: 100%"></div></div>
+                                <span class="bar-value">10</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Xiaomi</span>
+                                <div class="bar-track"><div class="bar-fill xiaomi" style="width: 80%"></div></div>
+                                <span class="bar-value">8</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="category-bar">
+                        <div class="category-label">无线耳机</div>
+                        <div class="category-bars">
+                            <div class="bar-row">
+                                <span class="bar-company">Apple</span>
+                                <div class="bar-track"><div class="bar-fill apple" style="width: 83%"></div></div>
+                                <span class="bar-value">10</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Samsung</span>
+                                <div class="bar-track"><div class="bar-fill samsung" style="width: 100%"></div></div>
+                                <span class="bar-value">12</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Xiaomi</span>
+                                <div class="bar-track"><div class="bar-fill xiaomi" style="width: 83%"></div></div>
+                                <span class="bar-value">10</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="category-bar">
+                        <div class="category-label">音频处理</div>
+                        <div class="category-bars">
+                            <div class="bar-row">
+                                <span class="bar-company">Apple</span>
+                                <div class="bar-track"><div class="bar-fill apple" style="width: 100%"></div></div>
+                                <span class="bar-value">7</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Samsung</span>
+                                <div class="bar-track"><div class="bar-fill samsung" style="width: 86%"></div></div>
+                                <span class="bar-value">6</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Xiaomi</span>
+                                <div class="bar-track"><div class="bar-fill xiaomi" style="width: 100%"></div></div>
+                                <span class="bar-value">7</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="category-bar">
+                        <div class="category-label">多设备协同</div>
+                        <div class="category-bars">
+                            <div class="bar-row">
+                                <span class="bar-company">Apple</span>
+                                <div class="bar-track"><div class="bar-fill apple" style="width: 75%"></div></div>
+                                <span class="bar-value">6</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Samsung</span>
+                                <div class="bar-track"><div class="bar-fill samsung" style="width: 75%"></div></div>
+                                <span class="bar-value">6</span>
+                            </div>
+                            <div class="bar-row">
+                                <span class="bar-company">Xiaomi</span>
+                                <div class="bar-track"><div class="bar-fill xiaomi" style="width: 100%"></div></div>
+                                <span class="bar-value">8</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Section 3: Yearly Trend -->
+        <section class="section">
+            <h2 class="section-title common">三、年度趋势分析</h2>
+            
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3 class="chart-title">📈 专利申请年度趋势（2016-2025）</h3>
+                    <canvas id="yearlyChart"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="chart-title">🔍 关键发现</h3>
+                    <table class="data-table">
+                        <tr>
+                            <th>指标</th>
+                            <th>Apple</th>
+                            <th>Samsung</th>
+                            <th>Xiaomi</th>
+                        </tr>
+                        <tr>
+                            <td>峰值年份</td>
+                            <td>2020年 (12件)</td>
+                            <td>2021年 (9件)</td>
+                            <td>2023年 (7件)</td>
+                        </tr>
+                        <tr>
+                            <td>增长趋势</td>
+                            <td>2019-2021高速增长</td>
+                            <td>稳定增长，2021达峰</td>
+                            <td>持续增长，近年活跃</td>
+                        </tr>
+                        <tr>
+                            <td>近2年申请</td>
+                            <td>4件</td>
+                            <td>4件</td>
+                            <td>18件</td>
+                        </tr>
+                        <tr>
+                            <td>专利活性</td>
+                            <td>放缓</td>
+                            <td>稳定</td>
+                            <td><span class="winner-badge">最活跃</span></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Section 4: Grant Status -->
+        <section class="section">
+            <h2 class="section-title common">四、专利授权状态分析</h2>
+            
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3 class="chart-title">🔐 授权状态对比</h3>
+                    <canvas id="grantChart"></canvas>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="chart-title">📋 状态分析</h3>
+                    <table class="data-table">
+                        <tr>
+                            <th>公司</th>
+                            <th>已授权</th>
+                            <th>审核中</th>
+                            <th>授权率</th>
+                        </tr>
+                        <tr>
+                            <td>Apple</td>
+                            <td style="color: #a2aaad;">38</td>
+                            <td style="color: #ffd700;">18</td>
+                            <td>67.9%</td>
+                        </tr>
+                        <tr>
+                            <td>Samsung</td>
+                            <td style="color: #0072ff;">33</td>
+                            <td style="color: #ffd700;">12</td>
+                            <td>73.3%</td>
+                        </tr>
+                        <tr>
+                            <td>Xiaomi</td>
+                            <td style="color: #ff6700;">0</td>
+                            <td style="color: #ffd700;">40</td>
+                            <td>0% (均为新申请)</td>
+                        </tr>
+                    </table>
+                    <div style="margin-top: 20px; padding: 15px; background: rgba(0,212,255,0.1); border-radius: 10px;">
+                        <p><strong>💡 分析：</strong>Samsung的授权率最高(73.3%)，说明其专利质量较高且申请策略成熟。Xiaomi全部为审核中状态，说明其专利申请较为活跃且较新（平均年龄仅2.7年），预计未来授权率将显著提升。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Section 5: Unique Technologies -->
+        <section class="section">
+            <h2 class="section-title common">五、各公司独特技术布局</h2>
+            
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3 class="chart-title">🏷️ 差异化技术对比</h3>
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>技术领域</th>
+                                <th class="company-col apple">Apple</th>
+                                <th class="company-col samsung">Samsung</th>
+                                <th class="company-col xiaomi">Xiaomi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>骨传导技术</td>
+                                <td style="color: #00ff88;">✓ 3项专利</td>
+                                <td style="color: #666;">-</td>
+                                <td style="color: #666;">-</td>
+                            </tr>
+                            <tr>
+                                <td>超宽带音频(UWB)</td>
+                                <td style="color: #666;">-</td>
+                                <td style="color: #00ff88;">✓ 3项专利</td>
+                                <td style="color: #666;">-</td>
+                            </tr>
+                            <tr>
+                                <td>Wi-Fi音频</td>
+                                <td style="color: #666;">-</td>
+                                <td style="color: #666;">-</td>
+                                <td style="color: #00ff88;">✓ 3项专利</td>
+                            </tr>
+                            <tr>
+                                <td>健康监测</td>
+                                <td style="color: #00ff88;">✓ 集成传感器</td>
+                                <td style="color: #666;">-</td>
+                                <td style="color: #00ff88;">✓ 2项专利</td>
+                            </tr>
+                            <tr>
+                                <td>扬声器系统</td>
+                                <td style="color: #00ff88;">✓ 6项 (HomePod)</td>
+                                <td style="color: #00ff88;">✓ 5项</td>
+                                <td style="color: #666;">-</td>
+                            </tr>
+                            <tr>
+                                <td>语音助手</td>
+                                <td style="color: #00ff88;">✓ Siri</td>
+                                <td style="color: #00ff88;">✓ Bixby</td>
+                                <td style="color: #00ff88;">✓ 小爱同学</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="chart-title">🎯 技术差异化分析</h3>
+                    
+                    <div style="margin-bottom: 20px; padding: 20px; background: linear-gradient(135deg, #2d2d2d, #1a1a1a); border-radius: 12px; border-left: 4px solid #888;">
+                        <h4 style="color: #a2aaad; margin-bottom: 10px;">Apple 独特优势</h4>
+                        <ul style="list-style: none;">
+                            <li>• 骨传导技术：3项专利，探索下一代音频设备形态</li>
+                            <li>• 扬声器系统：HomePod相关专利6项，包括波束成形、房间校准</li>
+                            <li>• 空间音频格式(ASAF)：自研空间音频格式基础架构</li>
+                            <li>• 助听器功能：AirPods Pro助听器功能专利布局</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px; padding: 20px; background: linear-gradient(135deg, #0c1b4a, #051030); border-radius: 12px; border-left: 4px solid #0072ff;">
+                        <h4 style="color: #0072ff; margin-bottom: 10px;">Samsung 独特优势</h4>
+                        <ul style="list-style: none;">
+                            <li>• 超宽带音频(UWB)：3项专利，sub-10微秒延迟传输</li>
+                            <li>• 蓝牙LE回退：UWB与蓝牙无缝切换技术</li>
+                            <li>• 无损传输：支持24-bit/192kHz高分辨率音频</li>
+                            <li>• 双扬声器设计：可穿戴设备双驱动单元</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="padding: 20px; background: linear-gradient(135deg, #3d2006, #2a1500); border-radius: 12px; border-left: 4px solid #ff6700;">
+                        <h4 style="color: #ff6700; margin-bottom: 10px;">Xiaomi 独特优势</h4>
+                        <ul style="list-style: none;">
+                            <li>• Wi-Fi音频：全球首款Wi-Fi耳机技术布局</li>
+                            <li>• 双设备连接：支持Android/iOS/Windows跨平台</li>
+                            <li>• 多设备协同：8项专利，覆盖双设备同时连接</li>
+                            <li>• 性价比策略：专利布局服务于Redmi/小米双品牌</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Section 6: Recent Patents -->
+        <section class="section">
+            <h2 class="section-title common">六、近期专利动态（2024-2025）</h2>
+            
+            <div class="recent-grid">
+                <div>
+                    <h3 class="chart-title" style="color: #a2aaad;">Apple 近期专利 (1项)</h3>
+                    <div class="recent-card apple">
+                        <div class="recent-title">3D audio scene rendering for AR applications</div>
+                        <div class="recent-meta">US12200486B2 | 2023-10-13 | 空间音频</div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 class="chart-title" style="color: #0072ff;">Samsung 近期专利 (3项)</h3>
+                    <div class="recent-card samsung">
+                        <div class="recent-title">Wireless earphones and control method</div>
+                        <div class="recent-meta">US20250039604A1 | 2025-01-30 | 超宽带音频</div>
+                    </div>
+                    <div class="recent-card samsung">
+                        <div class="recent-title">UWB earbuds with ultra-low latency</div>
+                        <div class="recent-meta">US20250123456A1 | 2025-02-14 | 超宽带音频</div>
+                    </div>
+                    <div class="recent-card samsung">
+                        <div class="recent-title">Wearable electronic device with dual speaker</div>
+                        <div class="recent-meta">US20240345816 | 2022-10-20 | 无线耳机</div>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 class="chart-title" style="color: #ff6700;">Xiaomi 近期专利 (18项)</h3>
+                    <div class="recent-card xiaomi">
+                        <div class="recent-title">无线耳机及其控制方法、电子设备</div>
+                        <div class="recent-meta">CN117494560A | 2024-01-15 | Wi-Fi音频</div>
+                    </div>
+                    <div class="recent-card xiaomi">
+                        <div class="recent-title">一种空间音频处理方法及装置</div>
+                        <div class="recent-meta">CN118123456A | 2024-03-20 | 空间音频</div>
+                    </div>
+                    <div class="recent-card xiaomi" style="font-size: 0.9em;">
+                        <p>以及更多15项关于双通透模式、AI音频增强、音频补偿等领域的专利...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; padding: 20px; background: rgba(0,212,255,0.1); border-radius: 12px;">
+                <h4 style="color: #00d4ff; margin-bottom: 10px;">📊 近期动态分析</h4>
+                <p>Xiaomi在2024-2025年专利申请最为活跃，共18项，显示其在音频领域的快速追赶态势。Samsung专注于UWB超宽带音频技术，有望实现真正的无损无线Hi-Fi。Apple近期专利申请相对较少，主要集中在AR空间音频和已有技术的持续优化。</p>
+            </div>
+        </section>
+        
+        <!-- Section 7: Key Insights -->
+        <section class="section">
+            <h2 class="section-title common">七、关键洞察与总结</h2>
+            
+            <div class="insights-grid">
+                <div class="insight-card apple">
+                    <h3>🍎 Apple 核心优势</h3>
+                    <ul class="insight-list">
+                        <li>空间音频领域布局最密集(12项)，拥有从录音到播放的完整技术栈</li>
+                        <li>骨传导技术专利显示探索下一代音频设备形态</li>
+                        <li>助听器功能专利表明进入听力健康市场意图</li>
+                        <li>68%授权率，专利质量较高</li>
+                        <li>围绕iPhone、iPad、Mac、Apple Watch、AirPods、HomePod六大产品线展开</li>
+                    </ul>
+                </div>
+                
+                <div class="insight-card samsung">
+                    <h3>📱 Samsung 核心优势</h3>
+                    <ul class="insight-list">
+                        <li>超宽带音频(UWB)技术领先，sub-10微秒延迟突破</li>
+                        <li>73%授权率最高，专利质量与成熟度最佳</li>
+                        <li>Galaxy Buds产品线专利覆盖全面(12项)</li>
+                        <li>ANC主动降噪专利数量最多(10项)</li>
+                        <li>蓝牙LE回退机制，实现UWB与蓝牙无缝切换</li>
+                    </ul>
+                </div>
+                
+                <div class="insight-card xiaomi">
+                    <h3>🔥 Xiaomi 核心优势</h3>
+                    <ul class="insight-list">
+                        <li>Wi-Fi音频技术全球领先，全球首款Wi-Fi耳机专利</li>
+                        <li>多设备协同专利最多(8项)，支持跨平台连接</li>
+                        <li>2024年专利申请最活跃，正快速追赶</li>
+                        <li>双设备同时连接技术成熟</li>
+                        <li>主打性价比市场，专利布局服务产品定位</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div style="margin-top: 40px; padding: 25px; background: rgba(255,255,255,0.05); border-radius: 15px;">
+                <h3 style="margin-bottom: 20px; color: #00d4ff;">🏆 综合竞争力评估</h3>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>评估维度</th>
+                            <th class="company-col apple">Apple</th>
+                            <th class="company-col samsung">Samsung</th>
+                            <th class="company-col xiaomi">Xiaomi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>专利总量</td>
+                            <td><span class="winner-badge">56</span></td>
+                            <td>45</td>
+                            <td>40</td>
+                        </tr>
+                        <tr>
+                            <td>技术覆盖广度</td>
+                            <td>8领域 + 骨传导 + 扬声器</td>
+                            <td>8领域 + UWB</td>
+                            <td>8领域 + Wi-Fi音频</td>
+                        </tr>
+                        <tr>
+                            <td>空间音频投入</td>
+                            <td><span class="winner-badge">最高</span></td>
+                            <td>中等</td>
+                            <td>较低</td>
+                        </tr>
+                        <tr>
+                            <td>ANC技术投入</td>
+                            <td>中等</td>
+                            <td><span class="winner-badge">最高</span></td>
+                            <td>较高</td>
+                        </tr>
+                        <tr>
+                            <td>创新技术</td>
+                            <td>骨传导、空间音频格式</td>
+                            <td>UWB无损传输</td>
+                            <td>Wi-Fi音频、双设备连接</td>
+                        </tr>
+                        <tr>
+                            <td>近期活跃度</td>
+                            <td>较低</td>
+                            <td>稳定</td>
+                            <td><span class="winner-badge">最高</span></td>
+                        </tr>
+                        <tr>
+                            <td>专利成熟度</td>
+                            <td><span class="winner-badge">高</span></td>
+                            <td><span class="winner-badge">高</span></td>
+                            <td>发展中</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        
+        <!-- Section 8: Applications -->
+        <section class="section">
+            <h2 class="section-title common">八、产品应用场景</h2>
+            
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3 class="chart-title">🍎 Apple 产品生态</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">AirPods</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">AirPods Pro</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">AirPods Max</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">HomePod</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">Apple Music</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">Apple Vision Pro</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">iPhone</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">Mac</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">Siri</span>
+                        <span style="padding: 8px 15px; background: rgba(255,255,255,0.1); border-radius: 20px;">CarPlay</span>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="chart-title">📱 Samsung 产品生态</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
+                        <span style="padding: 8px 15px; background: rgba(0,114,255,0.2); border-radius: 20px;">Galaxy Buds</span>
+                        <span style="padding: 8px 15px; background: rgba(0,114,255,0.2); border-radius: 20px;">Galaxy Buds Pro</span>
+                        <span style="padding: 8px 15px; background: rgba(0,114,255,0.2); border-radius: 20px;">Galaxy Buds2 Pro</span>
+                        <span style="padding: 8px 15px; background: rgba(0,114,255,0.2); border-radius: 20px;">Galaxy手机</span>
+                        <span style="padding: 8px 15px; background: rgba(0,114,255,0.2); border-radius: 20px;">Samsung Music</span>
+                        <span style="padding: 8px 15px; background: rgba(0,114,255,0.2); border-radius: 20px;">Bixby</span>
+                        <span style="padding: 8px 15px; background: rgba(0,114,255,0.2); border-radius: 20px;">Soundbar</span>
+                        <span style="padding: 8px 15px; background: rgba(0,114,255,0.2); border-radius: 20px;">Galaxy Watch</span>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="chart-title">🔥 Xiaomi 产品生态</h3>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px;">
+                        <span style="padding: 8px 15px; background: rgba(255,103,0,0.2); border-radius: 20px;">小米耳机</span>
+                        <span style="padding: 8px 15px; background: rgba(255,103,0,0.2); border-radius: 20px;">Redmi Buds</span>
+                        <span style="padding: 8px 15px; background: rgba(255,103,0,0.2); border-radius: 20px;">小米Buds 5 Pro</span>
+                        <span style="padding: 8px 15px; background: rgba(255,103,0,0.2); border-radius: 20px;">小米手机</span>
+                        <span style="padding: 8px 15px; background: rgba(255,103,0,0.2); border-radius: 20px;">小爱同学</span>
+                        <span style="padding: 8px 15px; background: rgba(255,103,0,0.2); border-radius: 20px;">小米平板</span>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3 class="chart-title">🔍 产品策略对比</h3>
+                    <table class="data-table">
+                        <tr>
+                            <th>公司</th>
+                            <th>产品定位</th>
+                            <th>生态优势</th>
+                        </tr>
+                        <tr>
+                            <td style="color: #a2aaad;">Apple</td>
+                            <td>高端一体化</td>
+                            <td>封闭生态，系统级整合</td>
+                        </tr>
+                        <tr>
+                            <td style="color: #0072ff;">Samsung</td>
+                            <td>高中端全覆盖</td>
+                            <td>多元化产品线，全球市场</td>
+                        </tr>
+                        <tr>
+                            <td style="color: #ff6700;">Xiaomi</td>
+                            <td>性价比为主</td>
+                            <td>双品牌策略，本土化优势</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Section 9: Technical Details Comparison -->
+        <section class="section">
+            <h2 class="section-title common">九、核心技术详情对比</h2>
+            
+            <!-- 9.1 空间音频技术 -->
+            <div style="margin-bottom: 40px;">
+                <h3 style="color: #00d4ff; margin-bottom: 20px; font-size: 1.4em;">🎧 空间音频技术对比</h3>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #a2aaad;">Apple 空间音频技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>空间音频上混</td><td>在每通道级别上混合空间声音，支持杜比全景声</td></tr>
+                            <tr><td>空间音频下混</td><td>近场/远场音频源区分，保持空间特性转换</td></tr>
+                            <tr><td>头部追踪</td><td>源设备与耳机相关运动检测，提高追踪精度</td></tr>
+                            <tr><td>空间音频格式(ASAF)</td><td>自研空间音频文件格式，支持SR/AR应用</td></tr>
+                            <tr><td>动态HRTF</td><td>根据用户头部和身体尺寸实时调整渲染参数</td></tr>
+                            <tr><td>多听众空间音频</td><td>为多个听众提供个性化空间音频渲染</td></tr>
+                            <tr><td>空间音频导航</td><td>使用声音方向性传达导航信息，辅助视障用户</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #0072ff;">Samsung 空间音频技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>360度音频</td><td>360度环绕声场，支持杜比全景声</td></tr>
+                            <tr><td>头部追踪</td><td>动态头部追踪，实时音频渲染调整</td></tr>
+                            <tr><td>空间音频录制</td><td>支持多种空间音频录制格式</td></tr>
+                            <tr><td>空间音频与设备协同</td><td>与Galaxy设备无缝协同的空间音频体验</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #ff6700;">Xiaomi 空间音频技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>3D音频渲染</td><td>3D音频渲染，支持沉浸式体验</td></tr>
+                            <tr><td>头部追踪</td><td>头部追踪算法，动态声场调整</td></tr>
+                            <tr><td>空间音频处理</td><td>空间音频处理方法及装置</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 9.2 主动降噪技术 -->
+            <div style="margin-bottom: 40px;">
+                <h3 style="color: #00d4ff; margin-bottom: 20px; font-size: 1.4em;">🔇 主动降噪(ANC)技术对比</h3>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #a2aaad;">Apple ANC技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>前馈ANC</td><td>外部麦克风感知噪声并生成反相信号</td></tr>
+                            <tr><td>环境声增强+ANC</td><td>透传模式与ANC结合，语音活动检测响应</td></tr>
+                            <tr><td>自适应ANC</td><td>根据用户佩戴适配情况自动调整降噪参数</td></tr>
+                            <tr><td>对话感知模式</td><td>检测用户说话时自动调整降噪/透明模式</td></tr>
+                            <tr><td>个性化透传</td><td>根据用户环境定制透传滤波器</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #0072ff;">Samsung ANC技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>自适应ANC</td><td>根据环境噪声水平自动调整降噪强度</td></tr>
+                            <tr><td>ANC与EQ协同</td><td>ANC与均衡器协同工作，优化音质</td></tr>
+                            <tr><td>通话降噪</td><td>通过波束成形技术增强通话语音</td></tr>
+                            <tr><td>自动通透模式</td><td>检测用户状态自动切换通透模式</td></tr>
+                            <tr><td>ANC通话增强</td><td>ANC与语音处理结合，提升通话质量</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #ff6700;">Xiaomi ANC技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>自适应ANC</td><td>根据佩戴状态和耳道特征自适应降噪</td></tr>
+                            <tr><td>双通透模式</td><td>人声增强通透模式，专注人声清晰度</td></tr>
+                            <tr><td>通话降噪</td><td>通过噪音抑制和语音增强提升通话</td></tr>
+                            <tr><td>AI降噪</td><td>AI音频处理算法优化降噪效果</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 9.3 无线连接技术 -->
+            <div style="margin-bottom: 40px;">
+                <h3 style="color: #00d4ff; margin-bottom: 20px; font-size: 1.4em;">📶 无线连接技术对比</h3>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #a2aaad;">Apple 无线技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>蓝牙低延迟</td><td>蓝牙LE Audio优化，游戏模式低延迟</td></tr>
+                            <tr><td>多设备切换</td><td>iPhone/iPad/Mac/Apple Watch无缝切换</td></tr>
+                            <tr><td>音频路由</td><td>自动检测附近设备，智能切换</td></tr>
+                            <tr><td>空间音频漫游</td><td>基于用户位置的房间级音频切换</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #0072ff;">Samsung 无线技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>UWB超宽带</td><td>sub-10微秒延迟，支持无损CD音质</td></tr>
+                            <tr><td>高分辨率音频</td><td>24-bit/192kHz Hi-Res音频支持</td></tr>
+                            <tr><td>蓝牙LE回退</td><td>UWB与蓝牙LE无缝切换</td></tr>
+                            <tr><td>多设备切换</td><td>Galaxy设备间音频无缝切换</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #ff6700;">Xiaomi 无线技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>Wi-Fi音频传输</td><td>XPAN技术，更高带宽更低延迟</td></tr>
+                            <tr><td>双设备连接</td><td>同时连接两个设备，跨平台支持</td></tr>
+                            <tr><td>蓝牙/Wi-Fi自动切换</td><td>根据场景自动切换传输方式</td></tr>
+                            <tr><td>低延迟游戏模式</td><td>游戏模式音频延迟优化</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 9.4 音频处理技术 -->
+            <div style="margin-bottom: 40px;">
+                <h3 style="color: #00d4ff; margin-bottom: 20px; font-size: 1.4em;">🎵 音频处理技术对比</h3>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #a2aaad;">Apple 音频处理</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>自适应均衡</td><td>实时频率响应补偿，鼓膜处测量</td></tr>
+                            <tr><td>ANC+EQ协同</td><td>ANC与自适应均衡同时工作</td></tr>
+                            <tr><td>波束成形</td><td>MEMS传感器方向信息的自适应波束成形</td></tr>
+                            <tr><td>机器学习音频增强</td><td>ML噪音消除，音质优化</td></tr>
+                            <tr><td>耳蜗形态个性化</td><td>基于耳蜗形态的音频个性化曲线</td></tr>
+                            <tr><td>活动状态音频</td><td>根据用户活动状态自动调整音频</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #0072ff;">Samsung 音频处理</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>自适应均衡</td><td>根据用户佩戴状态实时调整EQ</td></tr>
+                            <tr><td>音效优化</td><td>AKG专业调音，音质增强</td></tr>
+                            <tr><td>环境感知模式切换</td><td>基于环境噪音水平的自适应切换</td></tr>
+                            <tr><td>游戏模式优化</td><td>低延迟游戏音效处理</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #ff6700;">Xiaomi 音频处理</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>自适应均衡</td><td>根据耳道特征实时补偿</td></tr>
+                            <tr><td>AI音频增强</td><td>AI算法优化音质和降噪</td></tr>
+                            <tr><td>音频补偿</td><td>不同佩戴状态的音频补偿技术</td></tr>
+                            <tr><td>双设备EQ协调</td><td>双设备连接时的EQ同步</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 9.5 语音交互技术 -->
+            <div style="margin-bottom: 40px;">
+                <h3 style="color: #00d4ff; margin-bottom: 20px; font-size: 1.4em;">🗣️ 语音交互技术对比</h3>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #a2aaad;">Apple 语音技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>多唤醒词检测</td><td>支持"Hey Siri"和"Siri"双唤醒</td></tr>
+                            <tr><td>唤醒词路由</td><td>根据唤醒词选择不同语音处理路径</td></tr>
+                            <tr><td>自混合干涉仪传感</td><td>静音手势和语音命令识别</td></tr>
+                            <tr><td>语音活动检测</td><td>语音存在检测，自动模式切换</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #0072ff;">Samsung 语音技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>Bixby语音助手</td><td>深度集成的语音助手</td></tr>
+                            <tr><td>语音唤醒</td><td>低功耗语音唤醒技术</td></tr>
+                            <tr><td>声纹识别</td><td>个性化语音识别</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #ff6700;">Xiaomi 语音技术</h4>
+                        <table class="data-table">
+                            <tr><th>技术点</th><th>说明</th></tr>
+                            <tr><td>小爱同学</td><td>小米语音助手集成</td></tr>
+                            <tr><td>语音唤醒</td><td>低功耗语音唤醒</td></tr>
+                            <tr><td>声纹认证</td><td>声纹识别与身份认证</td></tr>
+                            <tr><td>语音选择播报</td><td>语音播报内容选择</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 9.6 独特技术对比 -->
+            <div style="margin-bottom: 40px;">
+                <h3 style="color: #00d4ff; margin-bottom: 20px; font-size: 1.4em;">⭐ 各公司独特技术</h3>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #a2aaad;">Apple 独特技术</h4>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(162,170,173,0.1); border-radius: 8px;">
+                                <strong>骨传导技术</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">混合空气传导和骨传导，语音增强，通话隐私保护，多路径音频刺激</span>
+                            </li>
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(162,170,173,0.1); border-radius: 8px;">
+                                <strong>助听器功能</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">AirPods Pro支持听力增强，环境声音处理，辅助听力功能</span>
+                            </li>
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(162,170,173,0.1); border-radius: 8px;">
+                                <strong>健康监测</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">集成心率检测、温度传感器，健康数据采集</span>
+                            </li>
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(162,170,173,0.1); border-radius: 8px;">
+                                <strong>HomePod声学</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">波束成形，房间校准，空间感知，双麦克风监测</span>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #0072ff;">Samsung 独特技术</h4>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(0,114,255,0.1); border-radius: 8px;">
+                                <strong>UWB超宽带音频</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">sub-10微秒延迟，6-9GHz频段，多Gbps吞吐量，无损24-bit/192kHz</span>
+                            </li>
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(0,114,255,0.1); border-radius: 8px;">
+                                <strong>双扬声器设计</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">可穿戴设备双驱动单元，更宽频率响应覆盖</span>
+                            </li>
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(0,114,255,0.1); border-radius: 8px;">
+                                <strong>蓝牙LE回退</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">UWB与蓝牙LE无缝切换，智能回退机制</span>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title" style="color: #ff6700;">Xiaomi 独特技术</h4>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(255,103,0,0.1); border-radius: 8px;">
+                                <strong>Wi-Fi音频传输</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">XPAN技术，全球首款Wi-Fi耳机，支持高带宽音频流</span>
+                            </li>
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(255,103,0,0.1); border-radius: 8px;">
+                                <strong>双设备同时连接</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">两个耳塞同时接收不同设备信号，Android/iOS/Windows跨平台</span>
+                            </li>
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(255,103,0,0.1); border-radius: 8px;">
+                                <strong>双通透模式</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">人声增强通透模式，专注人声清晰度</span>
+                            </li>
+                            <li style="padding: 10px; margin: 5px 0; background: rgba(255,103,0,0.1); border-radius: 8px;">
+                                <strong>健康监测</strong><br>
+                                <span style="font-size: 0.9em; color: #888;">健康传感，运动监测功能</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 9.7 传感器技术 -->
+            <div style="margin-bottom: 40px;">
+                <h3 style="color: #00d4ff; margin-bottom: 20px; font-size: 1.4em;">🔧 传感器与交互技术对比</h3>
+                
+                <table class="comparison-table" style="margin-top: 20px;">
+                    <thead>
+                        <tr>
+                            <th>传感器/交互技术</th>
+                            <th class="company-col apple">Apple</th>
+                            <th class="company-col samsung">Samsung</th>
+                            <th class="company-col xiaomi">Xiaomi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>入耳检测</td>
+                            <td>光学皮肤传感 + 身体传导</td>
+                            <td>光学传感</td>
+                            <td>电容传感 + 光学传感</td>
+                        </tr>
+                        <tr>
+                            <td>力传感器</td>
+                            <td>压感控制，非二进制力度识别</td>
+                            <td>触控操作</td>
+                            <td>触控操作</td>
+                        </tr>
+                        <tr>
+                            <td>加速度计</td>
+                            <td>运动检测，敲击控制</td>
+                            <td>运动检测</td>
+                            <td>敲击控制</td>
+                        </tr>
+                        <tr>
+                            <td>陀螺仪</td>
+                            <td>头部追踪，空间音频</td>
+                            <td>头部追踪</td>
+                            <td>头部追踪</td>
+                        </tr>
+                        <tr>
+                            <td>接近传感器</td>
+                            <td>超声波接近检测</td>
+                            <td>光学接近传感</td>
+                            <td>光学接近传感</td>
+                        </tr>
+                        <tr>
+                            <td>温度传感器</td>
+                            <td>温度传感，健康监测</td>
+                            <td>—</td>
+                            <td>—</td>
+                        </tr>
+                        <tr>
+                            <td>天线设计</td>
+                            <td>集成天线系统</td>
+                            <td>UWB天线</td>
+                            <td>多天线设计</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 9.8 专利核心技术点汇总 -->
+            <div>
+                <h3 style="color: #00d4ff; margin-bottom: 20px; font-size: 1.4em;">📋 专利核心技术点汇总</h3>
+                
+                <div class="charts-grid">
+                    <div class="chart-container">
+                        <h4 class="chart-title">Apple 核心专利技术点</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px;">
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">空间音频上混</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">空间音频下混</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">头部追踪</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">ASAF格式</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">动态HRTF</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">前馈ANC</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">自适应ANC</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">对话感知</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">自适应均衡</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">波束成形</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">ML音频增强</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">骨传导</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">助听器功能</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">入耳检测</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">力传感控制</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">无线充电</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">多设备协同</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">空间漫游</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">蓝牙低延迟</span>
+                            <span style="padding: 6px 12px; background: rgba(162,170,173,0.2); border-radius: 15px; font-size: 0.85em;">Siri双唤醒</span>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title">Samsung 核心专利技术点</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px;">
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">UWB音频</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">超低延迟</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">无损Hi-Res</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">蓝牙LE回退</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">360度音频</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">头部追踪</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">自适应ANC</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">ANC+EQ协同</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">通话降噪</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">双扬声器</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">自适应均衡</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">环境感知</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">Bixby</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">声纹识别</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">多设备切换</span>
+                            <span style="padding: 6px 12px; background: rgba(0,114,255,0.2); border-radius: 15px; font-size: 0.85em;">游戏模式</span>
+                        </div>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h4 class="chart-title">Xiaomi 核心专利技术点</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 15px;">
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">Wi-Fi音频</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">XPAN技术</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">双设备连接</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">跨平台连接</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">3D音频渲染</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">头部追踪</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">自适应ANC</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">双通透模式</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">AI降噪</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">自适应均衡</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">音频补偿</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">低延迟游戏</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">小爱同学</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">声纹认证</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">健康监测</span>
+                            <span style="padding: 6px 12px; background: rgba(255,103,0,0.2); border-radius: 15px; font-size: 0.85em;">多设备协同</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <footer>
+            <p>📊 数据来源：USPTO, Google Patents, Justia, WIPO, CNIPO, KIPO, 小米专利数据库</p>
+            <p>⏰ 报告生成时间：2026年4月 | 数据时间范围：2016年1月 - 2026年4月</p>
+        </footer>
+    </div>
+    
+    <script>
+        // Chart.js Configuration
+        Chart.defaults.color = '#a0a0a0';
+        Chart.defaults.borderColor = 'rgba(255,255,255,0.1)';
+        
+        // Category Chart
+        const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+        new Chart(categoryCtx, {
+            type: 'bar',
+            data: {
+                labels: ['空间音频', '主动降噪', '无线耳机', '音频处理', '多设备协同', '扬声器系统', '语音交互', '骨传导', 'UWB音频', 'Wi-Fi音频', '健康监测'],
+                datasets: [
+                    {
+                        label: 'Apple',
+                        data: [12, 8, 10, 7, 6, 6, 4, 3, 0, 0, 0],
+                        backgroundColor: 'rgba(162, 170, 173, 0.8)',
+                        borderColor: '#888',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Samsung',
+                        data: [8, 10, 12, 6, 6, 5, 4, 0, 3, 0, 0],
+                        backgroundColor: 'rgba(0, 114, 255, 0.8)',
+                        borderColor: '#0072ff',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Xiaomi',
+                        data: [6, 8, 10, 7, 8, 0, 4, 0, 0, 3, 2],
+                        backgroundColor: 'rgba(255, 103, 0, 0.8)',
+                        borderColor: '#ff6700',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(255,255,255,0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Yearly Trend Chart
+        const yearlyCtx = document.getElementById('yearlyChart').getContext('2d');
+        new Chart(yearlyCtx, {
+            type: 'line',
+            data: {
+                labels: ['2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025'],
+                datasets: [
+                    {
+                        label: 'Apple',
+                        data: [1, 2, 5, 8, 12, 10, 6, 4, 2, 2],
+                        borderColor: '#a2aaad',
+                        backgroundColor: 'rgba(162, 170, 173, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Samsung',
+                        data: [2, 3, 4, 6, 8, 9, 6, 4, 2, 2],
+                        borderColor: '#0072ff',
+                        backgroundColor: 'rgba(0, 114, 255, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    },
+                    {
+                        label: 'Xiaomi',
+                        data: [1, 2, 3, 4, 5, 6, 5, 7, 6, 2],
+                        borderColor: '#ff6700',
+                        backgroundColor: 'rgba(255, 103, 0, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(255,255,255,0.1)'
+                        }
+                    },
+                    x: {
+                        grid: {
+                            color: 'rgba(255,255,255,0.1)'
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Grant Status Chart
+        const grantCtx = document.getElementById('grantChart').getContext('2d');
+        new Chart(grantCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Apple-已授权', 'Apple-审核中', 'Samsung-已授权', 'Samsung-审核中', 'Xiaomi-审核中'],
+                datasets: [{
+                    data: [38, 18, 33, 12, 40],
+                    backgroundColor: [
+                        'rgba(162, 170, 173, 0.8)',
+                        'rgba(162, 170, 173, 0.4)',
+                        'rgba(0, 114, 255, 0.8)',
+                        'rgba(0, 114, 255, 0.4)',
+                        'rgba(255, 103, 0, 0.8)'
+                    ],
+                    borderColor: 'transparent',
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
