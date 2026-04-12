@@ -23,6 +23,7 @@ import (
 	"github.com/wall-ai/agent-engine/internal/tui/search"
 	sess "github.com/wall-ai/agent-engine/internal/tui/session"
 	"github.com/wall-ai/agent-engine/internal/tui/spinnerv2"
+	"github.com/wall-ai/agent-engine/internal/tui/teamview"
 	"github.com/wall-ai/agent-engine/internal/tui/themes"
 	"github.com/wall-ai/agent-engine/internal/tui/toolui"
 	"github.com/wall-ai/agent-engine/internal/tui/vim"
@@ -93,6 +94,10 @@ type App struct {
 
 	// Collapsed group state
 	collapsedGroupExpanded bool // toggled by Ctrl+O
+
+	// Swarm / team panel
+	teamView  *teamview.TeamViewModel
+	swarmMode bool // true when a team is active
 
 	// SubmitFn is called when the user sends a message.
 	SubmitFn func(text string)
@@ -194,6 +199,7 @@ func NewApp(cfg AppConfig) (*App, error) {
 		cwd:           cfg.WorkDir,
 		completer:     NewCompleter(DefaultSlashCommands(), nil),
 		companionView: companion.New(),
+		teamView:      teamview.New(),
 		SubmitFn:      cfg.SubmitFn,
 	}, nil
 }
@@ -393,6 +399,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.Type == tea.KeyCtrlF:
 			a.searchBar.Show()
 			return a, nil
+
+		case msg.String() == "ctrl+t":
+			if a.teamView != nil && a.swarmMode {
+				a.teamView.Toggle()
+			}
 
 		case msg.Type == tea.KeyPgUp || msg.Type == tea.KeyPgDown:
 			// P6: Dismiss companion speech bubble on scroll (matches claude-code-main REPL.tsx)
@@ -630,6 +641,59 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case CompanionMuteMsg:
 		a.companionView.SetMuted(msg.Muted)
 
+	// ── Teammate / Swarm events ─────────────────────────────────────────
+	case TeammateSpawnedMsg:
+		a.swarmMode = true
+		a.messages = append(a.messages, ChatMessage{
+			Role:    "system",
+			Content: teamview.RenderTeammateSpawned(msg.Name, msg.Color, msg.BackendType),
+		})
+		a.refreshViewport()
+		a.viewport.GotoBottom()
+
+	case TeammateShutdownMsg:
+		a.messages = append(a.messages, ChatMessage{
+			Role:    "system",
+			Content: teamview.RenderTeammateShutdown(msg.Name, msg.Color, msg.Reason),
+		})
+		a.refreshViewport()
+		a.viewport.GotoBottom()
+
+	case TeammateMessageMsg:
+		a.messages = append(a.messages, ChatMessage{
+			Role:    "system",
+			Content: teamview.RenderTeammateMessage(msg.From, msg.Color, msg.Content),
+		})
+		a.refreshViewport()
+		a.viewport.GotoBottom()
+
+	case TeammateStatusUpdateMsg:
+		if a.teamView != nil {
+			a.teamView.SetTeamName(msg.TeamName)
+			members := make([]teamview.TeammateStatus, len(msg.Members))
+			for i, m := range msg.Members {
+				members[i] = teamview.TeammateStatus{
+					Name:        m.Name,
+					AgentID:     m.AgentID,
+					BackendType: m.BackendType,
+					Status:      m.Status,
+					Color:       m.Color,
+					CurrentTool: m.CurrentTool,
+					TurnCount:   m.TurnCount,
+				}
+			}
+			a.teamView.SetMembers(members)
+		}
+
+	case TeammatePermissionRequestMsg:
+		a.messages = append(a.messages, ChatMessage{
+			Role:    "system",
+			Content: teamview.RenderPermissionBadge(msg.WorkerName, msg.WorkerColor, msg.ToolName, msg.Description),
+		})
+		a.refreshViewport()
+		a.viewport.GotoBottom()
+		// The permission bridge handles the actual response via ResponseCh.
+
 	// ── AskUserQuestion events ───────────────────────────────────────────
 	case AskQuestionRequestMsg:
 		// Convert []interface{} → []askquestion.Question
@@ -759,6 +823,23 @@ func (a *App) SetCompanionMuted(muted bool) {
 	a.companionView.SetMuted(muted)
 }
 
+// ── Swarm / Team public API ───────────────────────────────────────────────────
+
+// SetSwarmMode enables or disables swarm mode in the TUI.
+func (a *App) SetSwarmMode(enabled bool) {
+	a.swarmMode = enabled
+}
+
+// IsSwarmMode returns whether swarm mode is active.
+func (a *App) IsSwarmMode() bool {
+	return a.swarmMode
+}
+
+// TeamView returns the team panel sub-model for external updates.
+func (a *App) TeamView() *teamview.TeamViewModel {
+	return a.teamView
+}
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
 func (a *App) View() string {
@@ -773,6 +854,14 @@ func (a *App) View() string {
 	body := a.viewport.View()
 	if a.spinner.IsVisible() {
 		body += "\n" + a.spinner.View()
+	}
+
+	// Team panel: render alongside the body when swarm mode is active.
+	if a.swarmMode && a.teamView != nil && a.teamView.IsVisible() {
+		teamPanel := a.teamView.View()
+		if teamPanel != "" {
+			body = lipgloss.JoinHorizontal(lipgloss.Top, body, "  ", teamPanel)
+		}
 	}
 
 	var input string
@@ -870,6 +959,12 @@ func (a *App) renderStatusLine() string {
 	}
 	if a.turnCount > 0 {
 		rightParts = append(rightParts, a.styles.Dimmed.Render(fmt.Sprintf("turn %d", a.turnCount)))
+	}
+	if a.swarmMode && a.teamView != nil {
+		teamInfo := a.teamView.StatusLineInfo()
+		if teamInfo != "" {
+			rightParts = append(rightParts, a.styles.Highlight.Render(teamInfo))
+		}
 	}
 	if a.cwd != "" {
 		rightParts = append(rightParts, a.styles.Dimmed.Render(shortenPath(a.cwd, 25)))

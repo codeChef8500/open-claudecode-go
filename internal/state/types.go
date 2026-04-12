@@ -50,6 +50,9 @@ type AppState struct {
 	ForegroundedTaskID string
 	ViewingAgentTaskID string
 
+	// ── In-process teammate tasks ────────────────────────────────────
+	InProcessTeammates map[string]*InProcessTeammateTaskState
+
 	// ── Agent name registry ───────────────────────────────────────────
 	AgentNameRegistry map[string]string // name → agentID
 
@@ -232,21 +235,48 @@ type PromptSuggestionState struct {
 
 // TeamContext tracks team/swarm context for multi-agent sessions.
 type TeamContext struct {
-	TeamName      string                 `json:"team_name"`
-	TeamFilePath  string                 `json:"team_file_path,omitempty"`
-	LeadAgentID   string                 `json:"lead_agent_id"`
-	SelfAgentID   string                 `json:"self_agent_id,omitempty"`
-	SelfAgentName string                 `json:"self_agent_name,omitempty"`
-	IsLeader      bool                   `json:"is_leader,omitempty"`
-	Teammates     map[string]TeammateRef `json:"teammates,omitempty"`
+	TeamName         string                 `json:"team_name"`
+	TeamFilePath     string                 `json:"team_file_path,omitempty"`
+	LeadAgentID      string                 `json:"lead_agent_id"`
+	LeadSessionID    string                 `json:"lead_session_id,omitempty"`
+	SelfAgentID      string                 `json:"self_agent_id,omitempty"`
+	SelfAgentName    string                 `json:"self_agent_name,omitempty"`
+	IsLeader         bool                   `json:"is_leader,omitempty"`
+	BackendType      string                 `json:"backend_type,omitempty"` // "in-process", "tmux"
+	Color            string                 `json:"color,omitempty"`
+	PlanModeRequired bool                   `json:"plan_mode_required,omitempty"`
+	Teammates        map[string]TeammateRef `json:"teammates,omitempty"`
 }
 
 // TeammateRef tracks a single teammate in a swarm.
 type TeammateRef struct {
-	Name      string `json:"name"`
-	AgentType string `json:"agent_type,omitempty"`
-	CWD       string `json:"cwd,omitempty"`
-	SpawnedAt int64  `json:"spawned_at"`
+	Name        string `json:"name"`
+	AgentID     string `json:"agent_id,omitempty"`
+	AgentType   string `json:"agent_type,omitempty"`
+	BackendType string `json:"backend_type,omitempty"` // "in-process", "tmux"
+	Model       string `json:"model,omitempty"`
+	Color       string `json:"color,omitempty"`
+	CWD         string `json:"cwd,omitempty"`
+	TmuxPaneID  string `json:"tmux_pane_id,omitempty"`
+	IsActive    bool   `json:"is_active"`
+	SpawnedAt   int64  `json:"spawned_at"`
+}
+
+// InProcessTeammateTaskState tracks the runtime state of an in-process teammate.
+// Aligned with claude-code-main's InProcessTeammateTaskState.
+type InProcessTeammateTaskState struct {
+	TaskID            string   `json:"task_id"`
+	AgentID           string   `json:"agent_id"`
+	AgentName         string   `json:"agent_name"`
+	TeamName          string   `json:"team_name"`
+	Status            string   `json:"status"` // "running", "idle", "completed", "failed", "killed"
+	IsIdle            bool     `json:"is_idle"`
+	CurrentTool       string   `json:"current_tool,omitempty"`
+	TurnCount         int      `json:"turn_count"`
+	TotalPausedMs     int64    `json:"total_paused_ms"`
+	PermissionMode    string   `json:"permission_mode,omitempty"`
+	ShutdownRequested bool     `json:"shutdown_requested"`
+	PendingMessages   []string `json:"pending_messages,omitempty"`
 }
 
 // InboxState tracks incoming messages for swarm members.
@@ -272,10 +302,11 @@ type DenialTrackingStateRef struct {
 // New creates a fresh AppState with sane defaults.
 func New(cwd string) *AppState {
 	return &AppState{
-		CWD:               cwd,
-		PermissionMode:    "default",
-		Tasks:             make(map[string]*TaskState),
-		AgentNameRegistry: make(map[string]string),
+		CWD:                cwd,
+		PermissionMode:     "default",
+		Tasks:              make(map[string]*TaskState),
+		AgentNameRegistry:  make(map[string]string),
+		InProcessTeammates: make(map[string]*InProcessTeammateTaskState),
 	}
 }
 

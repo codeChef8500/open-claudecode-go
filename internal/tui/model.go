@@ -137,6 +137,65 @@ type CompanionMuteMsg struct {
 // TeaserExpiredMsg signals the teaser notification should be hidden.
 type TeaserExpiredMsg struct{}
 
+// ── Teammate / Swarm Bubbletea messages ──────────────────────────────────────
+
+// TeammateStatusUpdateMsg refreshes the team panel with current member statuses.
+type TeammateStatusUpdateMsg struct {
+	TeamName string
+	Members  []TeammateStatusInfo
+}
+
+// TeammateStatusInfo carries display info for a single teammate.
+type TeammateStatusInfo struct {
+	Name        string
+	AgentID     string
+	BackendType string
+	Status      string
+	Color       string
+	CurrentTool string
+	TurnCount   int
+}
+
+// TeammateMessageMsg carries a chat message from a teammate to the viewport.
+type TeammateMessageMsg struct {
+	From         string
+	Content      string
+	Color        string
+	IsStructured bool
+}
+
+// TeammatePermissionRequestMsg asks the leader TUI to show a permission dialog for a teammate.
+type TeammatePermissionRequestMsg struct {
+	WorkerName  string
+	WorkerColor string
+	ToolName    string
+	Description string
+	RequestID   string
+	ResponseCh  chan<- bool
+}
+
+// TeammatePermissionAnswerMsg carries the leader's permission decision.
+type TeammatePermissionAnswerMsg struct {
+	RequestID string
+	Granted   bool
+}
+
+// TeammateSpawnedMsg notifies the TUI that a new teammate was spawned.
+type TeammateSpawnedMsg struct {
+	Name        string
+	AgentID     string
+	BackendType string
+	Color       string
+}
+
+// TeammateShutdownMsg notifies the TUI that a teammate has shut down.
+type TeammateShutdownMsg struct {
+	Name    string
+	AgentID string
+	Reason  string
+	Color   string
+}
+
 // ── AskUserQuestion Bubbletea messages ──────────────────────────────────────
 
 // AskQuestionRequestMsg asks the TUI to show the AskUserQuestion dialog.

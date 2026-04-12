@@ -17,22 +17,34 @@ import (
 // The team file persists team state to disk for recovery and inspection.
 
 // TeamFile represents the on-disk team configuration and state.
+// Aligned with claude-code-main's TeamFile type.
 type TeamFile struct {
-	Name        string       `json:"name"`
-	Description string       `json:"description,omitempty"`
-	LeadAgent   string       `json:"lead_agent"`
-	Members     []TeamMember `json:"members"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
-	Status      TeamStatus   `json:"status"`
+	Name             string       `json:"name"`
+	Description      string       `json:"description,omitempty"`
+	LeadAgent        string       `json:"lead_agent"`
+	LeadSessionID    string       `json:"lead_session_id,omitempty"`
+	BackendType      string       `json:"backend_type,omitempty"` // "in-process", "tmux"
+	HiddenPaneIDs    []string     `json:"hidden_pane_ids,omitempty"`
+	TeamAllowedPaths []string     `json:"team_allowed_paths,omitempty"`
+	Members          []TeamMember `json:"members"`
+	CreatedAt        time.Time    `json:"created_at"`
+	UpdatedAt        time.Time    `json:"updated_at"`
+	Status           TeamStatus   `json:"status"`
 }
 
 // TeamMember is a single agent participating in a team.
+// Aligned with claude-code-main's TeamFile member entries.
 type TeamMember struct {
-	AgentID   string `json:"agent_id"`
-	AgentType string `json:"agent_type"`
-	Role      string `json:"role,omitempty"` // "lead", "worker", "observer"
-	Status    string `json:"status"`         // "active", "idle", "stopped"
+	AgentID     string `json:"agent_id"`
+	AgentName   string `json:"agent_name,omitempty"`
+	AgentType   string `json:"agent_type"`
+	BackendType string `json:"backend_type,omitempty"` // "in-process", "tmux"
+	Model       string `json:"model,omitempty"`
+	Color       string `json:"color,omitempty"`
+	Role        string `json:"role,omitempty"` // "lead", "worker", "observer"
+	Status      string `json:"status"`         // "active", "idle", "stopped"
+	TmuxPaneID  string `json:"tmux_pane_id,omitempty"`
+	WorkDir     string `json:"work_dir,omitempty"`
 }
 
 // TeamStatus represents the lifecycle of a team.
