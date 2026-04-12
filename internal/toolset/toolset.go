@@ -12,6 +12,7 @@ import (
 	"github.com/wall-ai/agent-engine/internal/tool/askuser"
 	"github.com/wall-ai/agent-engine/internal/tool/bash"
 	"github.com/wall-ai/agent-engine/internal/tool/brief"
+	"github.com/wall-ai/agent-engine/internal/tool/browser"
 	"github.com/wall-ai/agent-engine/internal/tool/cron"
 	"github.com/wall-ai/agent-engine/internal/tool/fileedit"
 	"github.com/wall-ai/agent-engine/internal/tool/fileread"
@@ -63,6 +64,8 @@ func DefaultTools(runner agentool.SubAgentRunner, skillRegs ...SkillRegistryOpti
 		// Web tools
 		webfetch.New(),
 		websearch.New("", ""),
+		// Browser automation (DrissionPage-style)
+		browser.New(),
 		// Interaction tools
 		askuser.New(),
 		todo.New(),
