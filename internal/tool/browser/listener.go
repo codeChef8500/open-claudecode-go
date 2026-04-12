@@ -23,7 +23,7 @@ type NetworkListener struct {
 	pending map[string]*pendingReq // requestId → partial data
 	mu      sync.Mutex
 	active  bool
-	stopFn  func()
+	stopCh  chan struct{} // closed to signal event goroutine to exit
 
 	maxPackets int
 }
@@ -58,12 +58,13 @@ func (nl *NetworkListener) Start(targets []string, isRegex bool, methods []strin
 	nl.packets = nil
 	nl.pending = make(map[string]*pendingReq)
 	nl.active = true
+	nl.stopCh = make(chan struct{})
 
 	// Enable CDP Network domain
 	_ = proto.NetworkEnable{}.Call(nl.page)
 
-	// Set up event listeners
-	stop := nl.page.EachEvent(
+	// Set up event listeners — wait() blocks, so run in goroutine
+	wait := nl.page.EachEvent(
 		func(e *proto.NetworkRequestWillBeSent) {
 			nl.onRequest(e)
 		},
@@ -71,7 +72,21 @@ func (nl *NetworkListener) Start(targets []string, isRegex bool, methods []strin
 			nl.onResponse(e)
 		},
 	)
-	nl.stopFn = stop
+
+	stopCh := nl.stopCh
+	go func() {
+		done := make(chan struct{})
+		go func() {
+			wait()
+			close(done)
+		}()
+		select {
+		case <-stopCh:
+			return
+		case <-done:
+			return
+		}
+	}()
 }
 
 // Stop disables network capture.
@@ -79,10 +94,13 @@ func (nl *NetworkListener) Stop() {
 	nl.mu.Lock()
 	defer nl.mu.Unlock()
 
+	if !nl.active {
+		return
+	}
 	nl.active = false
-	if nl.stopFn != nil {
-		// EachEvent returns a wait function, but stopping is done by letting it go
-		nl.stopFn = nil
+	if nl.stopCh != nil {
+		close(nl.stopCh)
+		nl.stopCh = nil
 	}
 }
 

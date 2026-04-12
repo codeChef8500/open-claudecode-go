@@ -362,11 +362,11 @@ func (t *BrowserTool) doGetHTML(in *Input) string {
 		if in.HTMLOuter {
 			prop = "outerHTML"
 		}
-		html, hErr := el.HTML()
+		res, hErr := el.Eval(fmt.Sprintf(`(el) => el.%s`, prop))
 		if hErr != nil {
 			return fmt.Sprintf("get_html failed: %v", hErr)
 		}
-		_ = prop
+		html := res.Value.Str()
 		if len(html) > 10000 {
 			html = html[:10000] + "\n... (truncated)"
 		}

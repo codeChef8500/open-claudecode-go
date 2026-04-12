@@ -193,3 +193,93 @@ func TestSessionManagerInit(t *testing.T) {
 		t.Errorf("fresh manager has %d sessions, want 0", len(list))
 	}
 }
+
+// TestSchemaDispatchConsistency verifies every action in the JSON Schema enum
+// has a corresponding dispatch case (not returning "Unknown action").
+// Skips create_session since it launches a real browser.
+func TestSchemaDispatchConsistency(t *testing.T) {
+	schema := inputSchema()
+	var parsed struct {
+		Properties struct {
+			Action struct {
+				Enum []string `json:"enum"`
+			} `json:"action"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(schema, &parsed); err != nil {
+		t.Fatalf("schema parse error: %v", err)
+	}
+
+	// Actions that launch real browsers or have side effects
+	skip := map[string]bool{"create_session": true}
+
+	bt := New()
+	for _, action := range parsed.Properties.Action.Enum {
+		if skip[action] {
+			continue
+		}
+		in := &Input{Action: action}
+		result := bt.dispatch(context.Background(), in)
+		if containsSubstr(result, "Unknown action") {
+			t.Errorf("action %q is in schema enum but has no dispatch case", action)
+		}
+	}
+}
+
+func TestMatchRoutePattern(t *testing.T) {
+	tests := []struct {
+		pattern string
+		url     string
+		want    bool
+	}{
+		{"*", "https://example.com/foo", true},
+		{"*api*", "https://example.com/api/v1", true},
+		{"*api*", "https://example.com/static/main.js", false},
+		{"*.js", "https://cdn.com/bundle.js", true},
+		{"*.js", "https://cdn.com/bundle.css", false},
+		{"https://example.com/*", "https://example.com/path", true},
+		{"https://example.com/*", "https://other.com/path", false},
+		{"analytics", "https://example.com/analytics/track", true},
+	}
+	for _, tc := range tests {
+		got := matchRoutePattern(tc.pattern, tc.url)
+		if got != tc.want {
+			t.Errorf("matchRoutePattern(%q, %q) = %v, want %v", tc.pattern, tc.url, got, tc.want)
+		}
+	}
+}
+
+func TestResolveKeyInfo(t *testing.T) {
+	tests := []struct {
+		name        string
+		wantKey     string
+		wantCode    string
+		wantKeyCode int
+	}{
+		{"shift", "Shift", "ShiftLeft", 16},
+		{"ctrl", "Control", "ControlLeft", 17},
+		{"Enter", "Enter", "Enter", 13},
+		{"a", "a", "KeyA", 65},
+	}
+	for _, tc := range tests {
+		ki := resolveKeyInfo(tc.name)
+		if ki.key != tc.wantKey {
+			t.Errorf("resolveKeyInfo(%q).key = %q, want %q", tc.name, ki.key, tc.wantKey)
+		}
+		if ki.code != tc.wantCode {
+			t.Errorf("resolveKeyInfo(%q).code = %q, want %q", tc.name, ki.code, tc.wantCode)
+		}
+		if ki.keyCode != tc.wantKeyCode {
+			t.Errorf("resolveKeyInfo(%q).keyCode = %d, want %d", tc.name, ki.keyCode, tc.wantKeyCode)
+		}
+	}
+}
+
+func TestCleanupIdleEmpty(t *testing.T) {
+	mgr := NewSessionManager(5, 30*60*1e9) // 30min
+	// Should not panic on empty sessions
+	mgr.cleanupIdle()
+	if len(mgr.ListSessions()) != 0 {
+		t.Error("expected 0 sessions after cleanupIdle on empty manager")
+	}
+}

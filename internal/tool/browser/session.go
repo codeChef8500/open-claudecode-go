@@ -74,10 +74,10 @@ type BrowserSession struct {
 	activeTab string
 
 	// Dialog state
-	alertText  string
-	alertType  string
-	autoAlert  bool
-	dialogDone chan struct{}
+	alertText     string
+	alertType     string
+	autoAlert     bool
+	cancelDialogs context.CancelFunc // cancels all dialog handler goroutines
 
 	// Network listener
 	networkListener *NetworkListener
@@ -88,6 +88,8 @@ type BrowserSession struct {
 
 	// Routes
 	routes       map[string]*RouteEntry
+	routeActive  bool
+	routeStopCh  chan struct{}
 	extraHeaders map[string]string
 
 	// Load mode
@@ -223,6 +225,20 @@ func (sm *SessionManager) CreateSession(ctx context.Context, in *Input) (*Browse
 			l = l.Set("ignore-certificate-errors", "")
 		}
 
+		// V7: Anti-detection launcher flags — critical for avoiding Google CAPTCHA
+		l = l.Set("disable-blink-features", "AutomationControlled")
+		l = l.Set("disable-features", "IsolateOrigins,site-per-process,TranslateUI")
+		l = l.Set("disable-infobars", "")
+		l = l.Set("disable-dev-shm-usage", "")
+		l = l.Set("no-first-run", "")
+		l = l.Set("no-default-browser-check", "")
+		l = l.Set("disable-popup-blocking", "")
+		l = l.Set("disable-background-networking", "false")
+		l = l.Set("enable-features", "NetworkService,NetworkServiceInProcess")
+		l = l.Set("password-store", "basic")
+		l = l.Set("use-mock-keychain", "")
+		l = l.Delete("enable-automation")
+
 		controlURL, err := l.Launch()
 		if err != nil {
 			return nil, fmt.Errorf("browser launch failed: %w", err)
@@ -250,7 +266,11 @@ func (sm *SessionManager) CreateSession(ctx context.Context, in *Input) (*Browse
 	if in.ViewportH > 0 {
 		vh = in.ViewportH
 	}
-	page.MustSetViewport(vw, vh, 0, false)
+	if err := page.SetViewport(&proto.EmulationSetDeviceMetricsOverride{
+		Width: vw, Height: vh, DeviceScaleFactor: 0, Mobile: false,
+	}); err != nil {
+		slog.Warn("browser: viewport set failed", slog.Any("err", err))
+	}
 
 	// Inject custom anti-detect + console scripts
 	_, err = page.EvalOnNewDocument(antiDetectScript)
@@ -270,28 +290,31 @@ func (sm *SessionManager) CreateSession(ctx context.Context, in *Input) (*Browse
 
 	jar, _ := cookiejar.New(nil)
 
+	dialogCtx, dialogCancel := context.WithCancel(context.Background())
+
 	session := &BrowserSession{
-		ID:           sessionID,
-		CreatedAt:    time.Now().UTC(),
-		LastUsed:     time.Now().UTC(),
-		Headless:     headless,
-		browser:      browser,
-		pages:        map[string]*rod.Page{tabID: page},
-		activeTab:    tabID,
-		autoAlert:    true,
-		downloads:    make(map[string]*DownloadMission),
-		routes:       make(map[string]*RouteEntry),
-		extraHeaders: make(map[string]string),
-		loadMode:     "normal",
-		httpClient:   &http.Client{Jar: jar, Timeout: 30 * time.Second},
-		actionsState: ActionsState{},
-		realUA:       ua,
-		isCDP:        isCDP,
-		isPersistent: in.UserDataDir != "",
+		ID:            sessionID,
+		CreatedAt:     time.Now().UTC(),
+		LastUsed:      time.Now().UTC(),
+		Headless:      headless,
+		browser:       browser,
+		pages:         map[string]*rod.Page{tabID: page},
+		activeTab:     tabID,
+		autoAlert:     true,
+		cancelDialogs: dialogCancel,
+		downloads:     make(map[string]*DownloadMission),
+		routes:        make(map[string]*RouteEntry),
+		extraHeaders:  make(map[string]string),
+		loadMode:      "normal",
+		httpClient:    &http.Client{Jar: jar, Timeout: 30 * time.Second},
+		actionsState:  ActionsState{},
+		realUA:        ua,
+		isCDP:         isCDP,
+		isPersistent:  in.UserDataDir != "",
 	}
 
-	// Set up dialog handler
-	go session.handleDialogs(page)
+	// Set up dialog handler (blocks in goroutine until context canceled)
+	go session.handleDialogs(dialogCtx, page)
 
 	sm.mu.Lock()
 	sm.sessions[sessionID] = session
@@ -372,11 +395,22 @@ func (sm *SessionManager) ListSessions() []map[string]interface{} {
 
 // close releases all resources for a session.
 func (s *BrowserSession) close() error {
+	// Cancel dialog handler goroutines first (non-blocking)
+	if s.cancelDialogs != nil {
+		s.cancelDialogs()
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.networkListener != nil {
 		s.networkListener.Stop()
+	}
+
+	if s.routeActive && s.routeStopCh != nil {
+		close(s.routeStopCh)
+		s.routeStopCh = nil
+		s.routeActive = false
 	}
 
 	if s.httpClient != nil {
@@ -396,16 +430,16 @@ func (s *BrowserSession) close() error {
 }
 
 // handleDialogs sets up dialog auto-handling for a page.
-func (s *BrowserSession) handleDialogs(page *rod.Page) {
-	// rod handles dialogs via page.HandleDialog
-	// We set up a persistent handler
-	wait := page.EachEvent(func(e *proto.PageJavascriptDialogOpening) {
+// The goroutine blocks on wait() until ctx is canceled (session close).
+func (s *BrowserSession) handleDialogs(ctx context.Context, page *rod.Page) {
+	wait := page.EachEvent(func(e *proto.PageJavascriptDialogOpening) bool {
 		s.mu.Lock()
 		s.alertText = e.Message
 		s.alertType = string(e.Type)
+		auto := s.autoAlert
 		s.mu.Unlock()
 
-		if s.autoAlert {
+		if auto {
 			accept := true
 			if e.Type == proto.PageDialogTypePrompt {
 				_ = proto.PageHandleJavaScriptDialog{Accept: accept, PromptText: ""}.Call(page)
@@ -413,9 +447,23 @@ func (s *BrowserSession) handleDialogs(page *rod.Page) {
 				_ = proto.PageHandleJavaScriptDialog{Accept: accept}.Call(page)
 			}
 		}
+		// return false to keep listening for more events
+		return false
 	})
-	// Block forever (goroutine lifetime tied to session)
-	_ = wait
+
+	// Block until context is canceled or wait completes
+	done := make(chan struct{})
+	go func() {
+		wait()
+		close(done)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return
+	case <-done:
+		return
+	}
 }
 
 // cleanupLoop periodically removes idle sessions.
@@ -428,19 +476,39 @@ func (sm *SessionManager) cleanupLoop() {
 }
 
 func (sm *SessionManager) cleanupIdle() {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
-
+	// Phase 1: collect IDs to close under read lock
+	sm.mu.RLock()
 	now := time.Now().UTC()
+	var toClose []string
 	for id, s := range sm.sessions {
 		s.mu.RLock()
 		idle := now.Sub(s.LastUsed)
 		s.mu.RUnlock()
 		if idle > sm.idleTimeout {
+			toClose = append(toClose, id)
+		}
+	}
+	sm.mu.RUnlock()
+
+	if len(toClose) == 0 {
+		return
+	}
+
+	// Phase 2: remove from map under write lock
+	sm.mu.Lock()
+	var sessions []*BrowserSession
+	for _, id := range toClose {
+		if s, ok := sm.sessions[id]; ok {
 			slog.Info("browser: cleaning up idle session", slog.String("id", id))
 			delete(sm.sessions, id)
-			go s.close()
+			sessions = append(sessions, s)
 		}
+	}
+	sm.mu.Unlock()
+
+	// Phase 3: close sessions outside of any lock
+	for _, s := range sessions {
+		_ = s.close()
 	}
 }
 

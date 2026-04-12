@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
 )
 
 // doWaitCFChallenge waits for Cloudflare challenge to complete.
@@ -26,7 +27,7 @@ func (t *BrowserTool) doWaitCFChallenge(in *Input) string {
 	// Phase 1: Detect challenge presence
 	challengeDetected := false
 	for time.Now().Before(deadline) {
-		title := page.MustInfo().Title
+		title := safeInfo(page).Title
 		titleLower := strings.ToLower(title)
 
 		if strings.Contains(titleLower, "just a moment") ||
@@ -61,7 +62,7 @@ func (t *BrowserTool) doWaitCFChallenge(in *Input) string {
 
 	// Phase 3: Wait for challenge to resolve
 	for time.Now().Before(deadline) {
-		title := page.MustInfo().Title
+		title := safeInfo(page).Title
 		titleLower := strings.ToLower(title)
 
 		if !strings.Contains(titleLower, "just a moment") &&
@@ -74,7 +75,7 @@ func (t *BrowserTool) doWaitCFChallenge(in *Input) string {
 					document.querySelector('.cf-browser-verification'));
 			}`)
 			if res != nil && res.Value.Bool() {
-				info := page.MustInfo()
+				info := safeInfo(page)
 				return fmt.Sprintf("Cloudflare challenge passed!\n  URL: %s\n  Title: %s", info.URL, info.Title)
 			}
 		}
@@ -137,18 +138,39 @@ func (t *BrowserTool) doVerifyCFClearance(in *Input) string {
 }
 
 // clickTurnstileCheckbox attempts to find and click the Cloudflare Turnstile checkbox.
+// Uses CDP Input.dispatchMouseEvent to click at absolute coordinates, which can
+// penetrate cross-origin iframes (unlike JS MouseEvent dispatch).
 func clickTurnstileCheckbox(page *rod.Page) error {
-	// Try to find Turnstile iframe and click the checkbox inside it
-	_, err := page.Eval(`() => {
+	// Get the bounding rect of the Turnstile iframe via JS
+	res, err := page.Eval(`() => {
 		let iframes = document.querySelectorAll('iframe[src*="challenges.cloudflare.com"]');
-		if (iframes.length === 0) return false;
-		// Simulate click on the iframe area (Turnstile checkbox is typically centered)
+		if (iframes.length === 0) return null;
 		let rect = iframes[0].getBoundingClientRect();
-		let x = rect.left + rect.width / 2;
-		let y = rect.top + rect.height / 2;
-		let evt = new MouseEvent('click', { clientX: x, clientY: y, bubbles: true });
-		iframes[0].dispatchEvent(evt);
-		return true;
+		return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 	}`)
-	return err
+	if err != nil || res == nil || res.Value.Nil() {
+		return fmt.Errorf("turnstile iframe not found")
+	}
+
+	x := res.Value.Get("x").Num()
+	y := res.Value.Get("y").Num()
+
+	// CDP mouse click at absolute page coordinates (crosses iframe boundary)
+	_ = proto.InputDispatchMouseEvent{
+		Type:       proto.InputDispatchMouseEventTypeMousePressed,
+		X:          x,
+		Y:          y,
+		Button:     proto.InputMouseButtonLeft,
+		ClickCount: 1,
+	}.Call(page)
+	time.Sleep(50 * time.Millisecond)
+	_ = proto.InputDispatchMouseEvent{
+		Type:       proto.InputDispatchMouseEventTypeMouseReleased,
+		X:          x,
+		Y:          y,
+		Button:     proto.InputMouseButtonLeft,
+		ClickCount: 1,
+	}.Call(page)
+
+	return nil
 }

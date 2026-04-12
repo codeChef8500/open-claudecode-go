@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/wall-ai/agent-engine/internal/engine"
 	"github.com/wall-ai/agent-engine/internal/tool"
 )
@@ -30,7 +31,7 @@ func (t *BrowserTool) Description() string {
 	return "DrissionPage-style advanced browser automation tool (Go + rod). " +
 		"Supports 100+ actions: session management, navigation, element location (CSS/XPath/text/attr), " +
 		"smart click with 3-level fallback, network listening, cookie/auth injection, " +
-		"Cloudflare bypass, CDP commands, screenshot/PDF, multi-tab, and more."
+		"Cloudflare bypass, Google CAPTCHA/consent bypass, CDP commands, screenshot/PDF, multi-tab, and more."
 }
 
 func (t *BrowserTool) InputSchema() json.RawMessage       { return inputSchema() }
@@ -64,7 +65,15 @@ Key actions:
   Data:      get_cookies, set_cookies, screenshot, pdf, get_html, snapshot
   Auth:      set_extra_headers, inject_cookies_string, inject_auth_token
   CDP:       cdp_send, set_geolocation, set_timezone
-  CF bypass: wait_cloudflare_challenge, extract_cf_clearance`
+  CF bypass: wait_cloudflare_challenge, extract_cf_clearance
+  Google:    detect_google_captcha, wait_google_challenge, handle_google_consent, inject_google_cookies
+
+Google Search anti-block workflow (recommended):
+  1. create_session(headless=false, user_data_dir="~/.chrome-profile")
+  2. navigate(url="https://www.google.com/search?q=...", google_auto_consent=true)
+  3. detect_google_captcha → check if blocked
+  4. wait_google_challenge(google_challenge_timeout=60000) → wait/handle if blocked
+  5. find_elements / get_html / snapshot → extract results`
 }
 
 func (t *BrowserTool) GetActivityDescription(input json.RawMessage) string {
@@ -366,6 +375,16 @@ func (t *BrowserTool) dispatch(ctx context.Context, in *Input) string {
 	case ActionVerifyCFClear:
 		return t.doVerifyCFClearance(in)
 
+	// --- V7: Google bypass ---
+	case ActionDetectGoogleCaptcha:
+		return t.doDetectGoogleCaptcha(in)
+	case ActionWaitGoogleChallenge:
+		return t.doWaitGoogleChallenge(in)
+	case ActionHandleGoogleConsent:
+		return t.doHandleGoogleConsent(in)
+	case ActionInjectGoogleCookies:
+		return t.doInjectGoogleCookies(in)
+
 	// --- Actions API ---
 	case ActionMoveToAction:
 		return t.doActionMoveTo(in)
@@ -406,4 +425,13 @@ func (t *BrowserTool) getSessionAndPage(in *Input) (*BrowserSession, *rod.Page, 
 // errStr formats an error as tool output.
 func errStr(err error) string {
 	return fmt.Sprintf("Error: %v", err)
+}
+
+// safeInfo returns page info without panicking. Returns nil on error.
+func safeInfo(page *rod.Page) *proto.TargetTargetInfo {
+	info, err := page.Info()
+	if err != nil {
+		return &proto.TargetTargetInfo{}
+	}
+	return info
 }

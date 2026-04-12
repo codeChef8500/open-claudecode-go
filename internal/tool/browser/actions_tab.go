@@ -1,10 +1,12 @@
 package browser
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/go-rod/stealth"
 	"github.com/google/uuid"
 )
@@ -39,10 +41,10 @@ func (t *BrowserTool) doNewTab(in *Input) string {
 	s.iframeCtx = nil
 	s.mu.Unlock()
 
-	go s.handleDialogs(page)
+	go s.handleDialogs(context.Background(), page)
 
 	url := ""
-	info := page.MustInfo()
+	info := safeInfo(page)
 	url = info.URL
 
 	return fmt.Sprintf("New tab created.\n  tab_id: %s\n  url: %s", tabID, url)
@@ -64,7 +66,7 @@ func (t *BrowserTool) doListTabs(in *Input) string {
 		if id == s.activeTab {
 			active = " [ACTIVE]"
 		}
-		info := p.MustInfo()
+		info := safeInfo(p)
 		lines = append(lines, fmt.Sprintf("  %s%s: %s — %s", id, active, truncStr(info.Title, 40), truncStr(info.URL, 60)))
 	}
 	return strings.Join(lines, "\n")
@@ -94,7 +96,7 @@ func (t *BrowserTool) doSwitchTab(in *Input) string {
 		return fmt.Sprintf("switch_tab activate failed: %v", actErr)
 	}
 
-	info := p.MustInfo()
+	info := safeInfo(p)
 	return fmt.Sprintf("Switched to tab %s.\n  URL: %s\n  Title: %s", in.TabID, info.URL, info.Title)
 }
 
@@ -149,7 +151,7 @@ func (t *BrowserTool) doClickForNewTab(in *Input) string {
 
 	// Click the element
 	_ = el.ScrollIntoView()
-	_ = el.Click("left", 1)
+	_ = el.Click(proto.InputMouseButtonLeft, 1)
 
 	// Wait for new page
 	timeout := 10 * time.Second
@@ -171,8 +173,8 @@ func (t *BrowserTool) doClickForNewTab(in *Input) string {
 			s.iframeCtx = nil
 			s.mu.Unlock()
 
-			go s.handleDialogs(newPage)
-			info := newPage.MustInfo()
+			go s.handleDialogs(context.Background(), newPage)
+			info := safeInfo(newPage)
 			return fmt.Sprintf("New tab opened via click.\n  tab_id: %s\n  URL: %s", tabID, info.URL)
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -190,10 +192,10 @@ func (t *BrowserTool) doClickForURLChange(in *Input) string {
 		return fmt.Sprintf("Element not found: %v", err)
 	}
 
-	beforeURL := page.MustInfo().URL
+	beforeURL := safeInfo(page).URL
 
 	_ = el.ScrollIntoView()
-	_ = el.Click("left", 1)
+	_ = el.Click(proto.InputMouseButtonLeft, 1)
 
 	timeout := 10 * time.Second
 	if in.Timeout > 0 {
@@ -202,7 +204,7 @@ func (t *BrowserTool) doClickForURLChange(in *Input) string {
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		currentURL := page.MustInfo().URL
+		currentURL := safeInfo(page).URL
 		if currentURL != beforeURL {
 			return fmt.Sprintf("URL changed after click.\n  Before: %s\n  After: %s", beforeURL, currentURL)
 		}

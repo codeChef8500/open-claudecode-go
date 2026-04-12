@@ -3,6 +3,7 @@ package browser
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -266,17 +267,9 @@ func (t *BrowserTool) doPDF(in *Input) string {
 	if savePath != "" {
 		dir := filepath.Dir(savePath)
 		_ = os.MkdirAll(dir, 0o755)
-		reader := data
-		buf := make([]byte, 0, 1024*1024)
-		tmp := make([]byte, 32*1024)
-		for {
-			n, readErr := reader.Read(tmp)
-			if n > 0 {
-				buf = append(buf, tmp[:n]...)
-			}
-			if readErr != nil {
-				break
-			}
+		buf, readErr := io.ReadAll(data)
+		if readErr != nil {
+			return fmt.Sprintf("PDF read failed: %v", readErr)
 		}
 		err = os.WriteFile(savePath, buf, 0o644)
 		if err != nil {
@@ -329,7 +322,7 @@ func (t *BrowserTool) doSnapshot(in *Input) string {
 	}
 
 	// Get page title, URL, and a structural snapshot
-	info := page.MustInfo()
+	info := safeInfo(page)
 	res, err := page.Eval(`() => {
 		function snap(el, depth) {
 			if (depth > 5) return '';

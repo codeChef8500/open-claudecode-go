@@ -150,19 +150,25 @@ const (
 	ActionGetNavHistory       = "get_navigation_history"
 
 	// V5: CDP capabilities
-	ActionConnectExisting   = "connect_existing"
-	ActionGetPerfMetrics    = "get_performance_metrics"
-	ActionGetResponseBody   = "get_response_body"
-	ActionSetDeviceMetrics  = "set_device_metrics"
-	ActionGetFullAXTree     = "get_full_ax_tree"
-	ActionEnableBrowserLog  = "enable_browser_log"
-	ActionGetBrowserLogs    = "get_browser_logs"
+	ActionConnectExisting  = "connect_existing"
+	ActionGetPerfMetrics   = "get_performance_metrics"
+	ActionGetResponseBody  = "get_response_body"
+	ActionSetDeviceMetrics = "set_device_metrics"
+	ActionGetFullAXTree    = "get_full_ax_tree"
+	ActionEnableBrowserLog = "enable_browser_log"
+	ActionGetBrowserLogs   = "get_browser_logs"
 
 	// V6: Cloudflare bypass
 	ActionWaitCFChallenge   = "wait_cloudflare_challenge"
 	ActionExtractCFClear    = "extract_cf_clearance"
 	ActionVerifyCFClear     = "verify_cf_clearance"
 	ActionCookiesToHTTPCffi = "cookies_to_http_cffi"
+
+	// V7: Google bypass
+	ActionDetectGoogleCaptcha = "detect_google_captcha"
+	ActionWaitGoogleChallenge = "wait_google_challenge"
+	ActionHandleGoogleConsent = "handle_google_consent"
+	ActionInjectGoogleCookies = "inject_google_cookies"
 )
 
 // Input is the unified input struct for all browser actions.
@@ -207,10 +213,10 @@ type Input struct {
 	Keys string `json:"keys,omitempty"`
 
 	// --- Wait ---
-	Timeout      int    `json:"timeout,omitempty"`
-	WaitState    string `json:"wait_state,omitempty"`
-	WaitExclude  bool   `json:"wait_exclude,omitempty"`
-	WaitPattern  string `json:"wait_pattern,omitempty"`
+	Timeout      int      `json:"timeout,omitempty"`
+	WaitState    string   `json:"wait_state,omitempty"`
+	WaitExclude  bool     `json:"wait_exclude,omitempty"`
+	WaitPattern  string   `json:"wait_pattern,omitempty"`
 	WaitMultiple []string `json:"wait_multiple,omitempty"`
 
 	// --- Network listening ---
@@ -232,12 +238,12 @@ type Input struct {
 	TabID string `json:"tab_id,omitempty"`
 
 	// --- Cookies ---
-	CookieName   string         `json:"cookie_name,omitempty"`
-	CookieValue  string         `json:"cookie_value,omitempty"`
-	CookieDomain string         `json:"cookie_domain,omitempty"`
-	CookiePath   string         `json:"cookie_path,omitempty"`
-	CookieString string         `json:"cookie_string,omitempty"`
-	Cookies      []CookieParam  `json:"cookies,omitempty"`
+	CookieName   string        `json:"cookie_name,omitempty"`
+	CookieValue  string        `json:"cookie_value,omitempty"`
+	CookieDomain string        `json:"cookie_domain,omitempty"`
+	CookiePath   string        `json:"cookie_path,omitempty"`
+	CookieString string        `json:"cookie_string,omitempty"`
+	Cookies      []CookieParam `json:"cookies,omitempty"`
 
 	// --- Storage ---
 	StorageType string            `json:"storage_type,omitempty"`
@@ -258,20 +264,20 @@ type Input struct {
 	ScreencastFormat string `json:"screencast_format,omitempty"`
 
 	// --- Headers / Auth ---
-	Headers         map[string]string `json:"headers,omitempty"`
-	UserAgent       string            `json:"user_agent,omitempty"`
-	AuthUsername    string            `json:"auth_username,omitempty"`
-	AuthPassword   string            `json:"auth_password,omitempty"`
-	AuthToken       string            `json:"auth_token,omitempty"`
-	AuthTokenType   string            `json:"auth_token_type,omitempty"`
-	HeaderKeys      []string          `json:"header_keys,omitempty"`
+	Headers       map[string]string `json:"headers,omitempty"`
+	UserAgent     string            `json:"user_agent,omitempty"`
+	AuthUsername  string            `json:"auth_username,omitempty"`
+	AuthPassword  string            `json:"auth_password,omitempty"`
+	AuthToken     string            `json:"auth_token,omitempty"`
+	AuthTokenType string            `json:"auth_token_type,omitempty"`
+	HeaderKeys    []string          `json:"header_keys,omitempty"`
 
 	// --- Route ---
-	RoutePattern string `json:"route_pattern,omitempty"`
-	RouteAction  string `json:"route_action,omitempty"`
-	RouteID      string `json:"route_id,omitempty"`
-	MockStatus   int    `json:"mock_status,omitempty"`
-	MockBody     string `json:"mock_body,omitempty"`
+	RoutePattern string            `json:"route_pattern,omitempty"`
+	RouteAction  string            `json:"route_action,omitempty"`
+	RouteID      string            `json:"route_id,omitempty"`
+	MockStatus   int               `json:"mock_status,omitempty"`
+	MockBody     string            `json:"mock_body,omitempty"`
 	MockHeaders  map[string]string `json:"mock_headers,omitempty"`
 	BlockedURLs  []string          `json:"blocked_urls,omitempty"`
 	BlockPreset  string            `json:"block_preset,omitempty"`
@@ -309,11 +315,11 @@ type Input struct {
 	Timezone  string  `json:"timezone,omitempty"`
 
 	// --- HTTP dual mode ---
-	HTTPMethod      string            `json:"http_method,omitempty"`
-	HTTPBody        string            `json:"http_body,omitempty"`
-	HTTPHeaders     map[string]string `json:"http_headers,omitempty"`
-	HTTPFormat      string            `json:"http_format,omitempty"`
-	TLSImpersonate  string            `json:"http_tls_impersonate,omitempty"`
+	HTTPMethod     string            `json:"http_method,omitempty"`
+	HTTPBody       string            `json:"http_body,omitempty"`
+	HTTPHeaders    map[string]string `json:"http_headers,omitempty"`
+	HTTPFormat     string            `json:"http_format,omitempty"`
+	TLSImpersonate string            `json:"http_tls_impersonate,omitempty"`
 
 	// --- Shadow DOM ---
 	ShadowSelector string `json:"shadow_selector,omitempty"`
@@ -331,8 +337,16 @@ type Input struct {
 	NetworkRequestID string `json:"network_request_id,omitempty"`
 
 	// --- Cloudflare ---
-	CFChallengeTimeout       int  `json:"cf_challenge_timeout,omitempty"`
-	CFScreenshotOnFail       bool `json:"cf_challenge_screenshot_on_fail,omitempty"`
+	CFChallengeTimeout int  `json:"cf_challenge_timeout,omitempty"`
+	CFScreenshotOnFail bool `json:"cf_challenge_screenshot_on_fail,omitempty"`
+
+	// --- V7: Google bypass ---
+	GoogleChallengeTimeout int  `json:"google_challenge_timeout,omitempty"`
+	GoogleAutoConsent      bool `json:"google_auto_consent,omitempty"`
+
+	// --- V7: Navigate retry ---
+	NavigateRetry         int `json:"navigate_retry,omitempty"`
+	NavigateRetryInterval int `json:"navigate_retry_interval,omitempty"`
 
 	// --- MHTML / Blob ---
 	SavePath string `json:"save_path,omitempty"`
@@ -379,27 +393,25 @@ func inputSchema() json.RawMessage {
 				"new_tab","list_tabs","switch_tab","close_tab",
 				"get_cookies","set_cookies","get_storage","get_console_logs",
 				"screenshot","screenshot_element","pdf",
-				"wait_download_start","wait_download_done","list_downloads",
-				"screencast_start","screencast_stop","snapshot",
-				"set_extra_headers","set_user_agent","set_http_auth",
+				"list_downloads","snapshot",
+				"set_extra_headers","clear_extra_headers","set_user_agent","set_http_auth",
 				"route_add","route_remove","route_list","set_blocked_urls",
 				"inject_cookies_string","inject_auth_token",
 				"save_mhtml","get_blob_url","set_load_mode",
 				"scroll","input","get_html",
 				"click_for_new_tab","click_for_url_change","find_child",
-				"action_move_to","action_move","action_click_at","action_hold","action_release",
-				"action_scroll_at","action_type","action_key_down","action_key_up","action_drag_in",
+				"action_move_to","action_click_at",
+				"action_scroll_at","action_type","action_key_down","action_key_up",
 				"set_storage","clear_storage","cdp_send",
 				"fetch_intercept_start","fetch_intercept_stop",
 				"navigate_with_headers","extract_auth_from_network",
 				"clear_cookies","set_geolocation","set_timezone",
-				"clear_extra_headers",
 				"cookies_to_http","http_get","http_post","http_close","http_to_browser_cookies",
 				"find_element_shadow","clear_cache","get_navigation_history",
-				"connect_existing",
 				"get_performance_metrics","get_response_body","set_device_metrics",
 				"get_full_ax_tree","enable_browser_log","get_browser_logs",
-				"wait_cloudflare_challenge","extract_cf_clearance","verify_cf_clearance","cookies_to_http_cffi"
+				"wait_cloudflare_challenge","extract_cf_clearance","verify_cf_clearance",
+				"detect_google_captcha","wait_google_challenge","handle_google_consent","inject_google_cookies"
 			]
 		},
 		"session_id":  {"type":"string","description":"Session ID. Auto-selected if omitted."},
@@ -436,7 +448,12 @@ func inputSchema() json.RawMessage {
 		"latitude":    {"type":"number","description":"Latitude for set_geolocation."},
 		"longitude":   {"type":"number","description":"Longitude for set_geolocation."},
 		"timezone":    {"type":"string","description":"IANA timezone for set_timezone."},
-		"cf_challenge_timeout":{"type":"integer","description":"CF challenge timeout in ms (default 30000)."}
+		"cf_challenge_timeout":{"type":"integer","description":"CF challenge timeout in ms (default 30000)."},
+		"google_challenge_timeout":{"type":"integer","description":"Google challenge wait timeout in ms (default 60000)."},
+		"google_auto_consent":{"type":"boolean","description":"Auto-handle Google consent page during navigate (default false)."},
+		"navigate_retry":{"type":"integer","description":"Number of navigate retries on failure (default 0)."},
+		"navigate_retry_interval":{"type":"integer","description":"Retry interval in ms (default 2000)."},
+		"user_data_dir":{"type":"string","description":"Chrome user data dir for persistent profile (reuse logged-in sessions)."}
 	},
 	"required": ["action"]
 }`)

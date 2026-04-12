@@ -208,7 +208,10 @@ func (t *BrowserTool) doListIframes(in *Input) string {
 		return errStr(err)
 	}
 
-	frames := page.MustElements("iframe")
+	frames, elemErr := page.Elements("iframe")
+	if elemErr != nil {
+		return fmt.Sprintf("list_iframes failed: %v", elemErr)
+	}
 	if len(frames) == 0 {
 		return "No iframes found on page."
 	}

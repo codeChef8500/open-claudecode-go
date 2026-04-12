@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -54,7 +55,7 @@ func (t *BrowserTool) doWaitForURL(in *Input) string {
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		currentURL := page.MustInfo().URL
+		currentURL := safeInfo(page).URL
 		matches := strings.Contains(currentURL, pattern)
 		if in.WaitExclude {
 			matches = !matches
@@ -64,7 +65,7 @@ func (t *BrowserTool) doWaitForURL(in *Input) string {
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	return fmt.Sprintf("wait_for_url timed out.\n  Pattern: %s\n  Current URL: %s", pattern, page.MustInfo().URL)
+	return fmt.Sprintf("wait_for_url timed out.\n  Pattern: %s\n  Current URL: %s", pattern, safeInfo(page).URL)
 }
 
 func (t *BrowserTool) doWaitForTitle(in *Input) string {
@@ -83,7 +84,7 @@ func (t *BrowserTool) doWaitForTitle(in *Input) string {
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		title := page.MustInfo().Title
+		title := safeInfo(page).Title
 		matches := strings.Contains(title, pattern)
 		if in.WaitExclude {
 			matches = !matches
@@ -106,10 +107,14 @@ func (t *BrowserTool) doWaitForNetworkIdle(in *Input) string {
 		timeout = time.Duration(in.Timeout) * time.Millisecond
 	}
 
-	wait := page.Timeout(timeout).WaitRequestIdle(500*time.Millisecond, nil, nil, nil)
-	wait()
+	// Use DOM stability as a proxy for network idle.
+	// WaitDOMStable waits until the DOM tree has no mutations for the given interval.
+	err = page.Timeout(timeout).WaitDOMStable(500*time.Millisecond, 0.1)
+	if err != nil {
+		return fmt.Sprintf("wait_for_network_idle timed out: %v", err)
+	}
 
-	return "Network is idle."
+	return "Network is idle (DOM stable)."
 }
 
 func (t *BrowserTool) doWaitForAlert(in *Input) string {
@@ -167,25 +172,26 @@ func (t *BrowserTool) doWaitForAnyElement(in *Input) string {
 		locator string
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
 	ch := make(chan result, len(in.WaitMultiple))
 	for i, loc := range in.WaitMultiple {
 		go func(idx int, l string) {
 			resolved := Resolve(l)
-			p := page.Timeout(timeout)
-			var el interface{ WaitVisible() error }
+			p := page.Context(ctx)
 			var findErr error
 			switch resolved.Strategy {
 			case StrategyXPath:
-				el2, err2 := p.ElementX(resolved.Value)
-				el = el2
-				findErr = err2
+				_, findErr = p.ElementX(resolved.Value)
 			default:
-				el2, err2 := p.Element(resolved.Value)
-				el = el2
-				findErr = err2
+				_, findErr = p.Element(resolved.Value)
 			}
-			if findErr == nil && el != nil {
-				ch <- result{index: idx, locator: l}
+			if findErr == nil {
+				select {
+				case ch <- result{index: idx, locator: l}:
+				case <-ctx.Done():
+				}
 			}
 		}(i, loc)
 	}
@@ -193,7 +199,7 @@ func (t *BrowserTool) doWaitForAnyElement(in *Input) string {
 	select {
 	case r := <-ch:
 		return fmt.Sprintf("Element found (index %d).\n  Locator: %s", r.index, r.locator)
-	case <-time.After(timeout):
+	case <-ctx.Done():
 		return "wait_for_any_element timed out. None of the locators matched."
 	}
 }

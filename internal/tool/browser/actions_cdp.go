@@ -162,7 +162,7 @@ func (t *BrowserTool) doNavigateWithHeaders(in *Input) string {
 	if err != nil {
 		return fmt.Sprintf("navigate_with_headers failed: %v", err)
 	}
-	info := page.MustInfo()
+	info := safeInfo(page)
 	return fmt.Sprintf("Navigated with custom headers.\n  URL: %s\n  Title: %s", info.URL, info.Title)
 }
 
@@ -496,8 +496,14 @@ func (t *BrowserTool) doActionKeyDown(in *Input) string {
 	if in.Key == "" {
 		return "Error: key is required"
 	}
-	k := mapKeyName(in.Key)
-	err = page.Keyboard.Press(k)
+	keyInfo := resolveKeyInfo(in.Key)
+	err = proto.InputDispatchKeyEvent{
+		Type:                  proto.InputDispatchKeyEventTypeKeyDown,
+		Key:                   keyInfo.key,
+		Code:                  keyInfo.code,
+		WindowsVirtualKeyCode: keyInfo.keyCode,
+		NativeVirtualKeyCode:  keyInfo.keyCode,
+	}.Call(page)
 	if err != nil {
 		return fmt.Sprintf("action_key_down %q failed: %v", in.Key, err)
 	}
@@ -512,13 +518,70 @@ func (t *BrowserTool) doActionKeyUp(in *Input) string {
 	if in.Key == "" {
 		return "Error: key is required"
 	}
-	k := mapKeyName(in.Key)
-	// rod doesn't have separate Down/Up; use Press as approximate
-	err = page.Keyboard.Press(k)
+	keyInfo := resolveKeyInfo(in.Key)
+	err = proto.InputDispatchKeyEvent{
+		Type:                  proto.InputDispatchKeyEventTypeKeyUp,
+		Key:                   keyInfo.key,
+		Code:                  keyInfo.code,
+		WindowsVirtualKeyCode: keyInfo.keyCode,
+		NativeVirtualKeyCode:  keyInfo.keyCode,
+	}.Call(page)
 	if err != nil {
 		return fmt.Sprintf("action_key_up %q failed: %v", in.Key, err)
 	}
 	return fmt.Sprintf("Key up: %s", in.Key)
+}
+
+// keyInfo holds CDP key event parameters.
+type keyInfo struct {
+	key     string
+	code    string
+	keyCode int
+}
+
+// resolveKeyInfo maps a human-readable key name to CDP key event fields.
+func resolveKeyInfo(name string) keyInfo {
+	switch strings.ToLower(name) {
+	case "shift":
+		return keyInfo{"Shift", "ShiftLeft", 16}
+	case "control", "ctrl":
+		return keyInfo{"Control", "ControlLeft", 17}
+	case "alt":
+		return keyInfo{"Alt", "AltLeft", 18}
+	case "meta", "command", "cmd":
+		return keyInfo{"Meta", "MetaLeft", 91}
+	case "enter", "return":
+		return keyInfo{"Enter", "Enter", 13}
+	case "tab":
+		return keyInfo{"Tab", "Tab", 9}
+	case "escape", "esc":
+		return keyInfo{"Escape", "Escape", 27}
+	case "backspace":
+		return keyInfo{"Backspace", "Backspace", 8}
+	case "delete":
+		return keyInfo{"Delete", "Delete", 46}
+	case "arrowup", "up":
+		return keyInfo{"ArrowUp", "ArrowUp", 38}
+	case "arrowdown", "down":
+		return keyInfo{"ArrowDown", "ArrowDown", 40}
+	case "arrowleft", "left":
+		return keyInfo{"ArrowLeft", "ArrowLeft", 37}
+	case "arrowright", "right":
+		return keyInfo{"ArrowRight", "ArrowRight", 39}
+	case "space":
+		return keyInfo{" ", "Space", 32}
+	default:
+		// Single character: use its char code
+		if len(name) == 1 {
+			ch := rune(name[0])
+			code := int(ch)
+			if ch >= 'a' && ch <= 'z' {
+				code = int(ch - 32) // uppercase keyCode
+			}
+			return keyInfo{name, "Key" + strings.ToUpper(name), code}
+		}
+		return keyInfo{name, name, 0}
+	}
 }
 
 func (t *BrowserTool) doActionScrollAt(in *Input) string {

@@ -118,12 +118,14 @@ const antiDetectScript = `
     Object.defineProperty(navigator, 'plugins', { get: function() { return fakePlugins; } });
   } catch(e) {}
 
-  // §5 — Language & Platform
+  // §5 — Language & Platform & Hardware
   try {
     Object.defineProperty(navigator, 'languages', { get: function() { return ['zh-CN','zh','en-US','en']; } });
     Object.defineProperty(navigator, 'language', { get: function() { return 'zh-CN'; } });
     Object.defineProperty(navigator, 'platform', { get: function() { return 'Win32'; } });
     Object.defineProperty(navigator, 'vendor', { get: function() { return 'Google Inc.'; } });
+    Object.defineProperty(navigator, 'hardwareConcurrency', { get: function() { return 4; } });
+    try { Object.defineProperty(navigator, 'deviceMemory', { get: function() { return 8; } }); } catch(e2) {}
   } catch(e) {}
 
   // §6 — Canvas fingerprint noise (deterministic seed)
@@ -142,14 +144,18 @@ const antiDetectScript = `
     };
   } catch(e) {}
 
-  // §7 — WebGL Renderer
+  // §7 — WebGL Renderer (WebGL1 + WebGL2)
   try {
-    var origGetParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function(p) {
-      if (p === 37445) return 'Intel Inc.';
-      if (p === 37446) return 'Intel Iris OpenGL Engine';
-      return origGetParameter.call(this, p);
+    var patchWebGL = function(proto) {
+      var origGetParam = proto.getParameter;
+      proto.getParameter = function(p) {
+        if (p === 37445) return 'Intel Inc.';
+        if (p === 37446) return 'Intel Iris OpenGL Engine';
+        return origGetParam.call(this, p);
+      };
     };
+    patchWebGL(WebGLRenderingContext.prototype);
+    try { patchWebGL(WebGL2RenderingContext.prototype); } catch(e2) {}
   } catch(e) {}
 
   // §8 — hasFocus always true
@@ -235,18 +241,42 @@ const antiDetectScript = `
     };
   } catch(e) {}
 
-  // §16 — Remove CDP variables (cdc_, __playwright, __pw_)
+  // §16 — Remove CDP/Selenium/automation variables
   try {
-    var cdpKeys = Object.getOwnPropertyNames(window).filter(function(k) {
-      return /^cdc_|^__playwright|^__pw_/.test(k);
+    var autoKeys = Object.getOwnPropertyNames(window).filter(function(k) {
+      return /^cdc_|^__playwright|^__pw_|^__selenium|^_Selenium_IDE_Recorder|^__webdriver_evaluate|^__driver_evaluate|^__webdriver_unwrap|^__fxdriver_evaluate/.test(k);
     });
-    cdpKeys.forEach(function(k) { try { delete window[k]; } catch(e) {} });
+    autoKeys.forEach(function(k) { try { delete window[k]; } catch(e) {} });
     // Intercept future assignments
     var origDefineProperty = Object.defineProperty;
     Object.defineProperty = function(obj, prop, desc) {
-      if (obj === window && /^cdc_|^__playwright|^__pw_/.test(prop)) return obj;
+      if (obj === window && /^cdc_|^__playwright|^__pw_|^__selenium|^_Selenium_IDE_Recorder|^__webdriver/.test(prop)) return obj;
       return origDefineProperty.call(Object, obj, prop, desc);
     };
+  } catch(e) {}
+
+  // §17 — Connection API aliases (mozConnection, webkitConnection)
+  try {
+    if (navigator.connection) {
+      try { Object.defineProperty(navigator, 'mozConnection',    { get: function() { return navigator.connection; } }); } catch(e2) {}
+      try { Object.defineProperty(navigator, 'webkitConnection', { get: function() { return navigator.connection; } }); } catch(e2) {}
+    }
+  } catch(e) {}
+
+  // §18 — Iframe contentWindow.chrome consistency
+  try {
+    var origHTMLIFrameElement = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow');
+    if (origHTMLIFrameElement && origHTMLIFrameElement.get) {
+      Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
+        get: function() {
+          var win = origHTMLIFrameElement.get.call(this);
+          if (win && !win.chrome) {
+            try { win.chrome = window.chrome; } catch(e2) {}
+          }
+          return win;
+        }
+      });
+    }
   } catch(e) {}
 
 })();

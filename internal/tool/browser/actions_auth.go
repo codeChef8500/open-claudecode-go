@@ -3,10 +3,12 @@ package browser
 import (
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/google/uuid"
 	"github.com/ysmood/gson"
@@ -123,7 +125,7 @@ func (t *BrowserTool) doInjectCookieString(in *Input) string {
 	domain := in.CookieDomain
 	if domain == "" {
 		// Extract from current URL
-		info := page.MustInfo()
+		info := safeInfo(page)
 		if info.URL != "" {
 			parts := strings.Split(info.URL, "/")
 			if len(parts) >= 3 {
@@ -211,7 +213,7 @@ func (t *BrowserTool) doInjectAuthToken(in *Input) string {
 // --- Route management ---
 
 func (t *BrowserTool) doRouteAdd(in *Input) string {
-	s, _, err := t.getSessionAndPage(in)
+	s, page, err := t.getSessionAndPage(in)
 	if err != nil {
 		return errStr(err)
 	}
@@ -236,13 +238,139 @@ func (t *BrowserTool) doRouteAdd(in *Input) string {
 
 	s.mu.Lock()
 	s.routes[routeID] = route
+	needStart := !s.routeActive
 	s.mu.Unlock()
+
+	// Start interception if not already active
+	if needStart {
+		startRouteInterception(s, page)
+	}
 
 	return fmt.Sprintf("Route added.\n  id: %s\n  pattern: %s\n  action: %s", routeID, in.RoutePattern, action)
 }
 
+// startRouteInterception enables Fetch domain and starts an event loop that
+// matches paused requests against session routes.
+func startRouteInterception(s *BrowserSession, page *rod.Page) {
+	// Enable Fetch domain to intercept requests
+	err := proto.FetchEnable{
+		Patterns: []*proto.FetchRequestPattern{
+			{URLPattern: "*", RequestStage: proto.FetchRequestStageRequest},
+		},
+	}.Call(page)
+	if err != nil {
+		slog.Warn("browser: FetchEnable failed", slog.Any("err", err))
+		return
+	}
+
+	s.mu.Lock()
+	s.routeActive = true
+	s.routeStopCh = make(chan struct{})
+	stopCh := s.routeStopCh
+	s.mu.Unlock()
+
+	wait := page.EachEvent(func(e *proto.FetchRequestPaused) {
+		handleRoutedRequest(s, page, e)
+	})
+
+	go func() {
+		done := make(chan struct{})
+		go func() {
+			wait()
+			close(done)
+		}()
+		select {
+		case <-stopCh:
+			_ = proto.FetchDisable{}.Call(page)
+			return
+		case <-done:
+			return
+		}
+	}()
+}
+
+// handleRoutedRequest applies route rules to a paused request.
+func handleRoutedRequest(s *BrowserSession, page *rod.Page, e *proto.FetchRequestPaused) {
+	s.mu.RLock()
+	var matched *RouteEntry
+	for _, r := range s.routes {
+		if matchRoutePattern(r.Pattern, e.Request.URL) {
+			matched = r
+			break
+		}
+	}
+	s.mu.RUnlock()
+
+	if matched == nil {
+		// No route matched — continue normally
+		_ = proto.FetchContinueRequest{RequestID: e.RequestID}.Call(page)
+		return
+	}
+
+	switch matched.Action {
+	case "abort":
+		_ = proto.FetchFailRequest{
+			RequestID:   e.RequestID,
+			ErrorReason: proto.NetworkErrorReasonBlockedByClient,
+		}.Call(page)
+	case "mock_response":
+		status := matched.MockStatus
+		if status == 0 {
+			status = 200
+		}
+		var headers []*proto.FetchHeaderEntry
+		for k, v := range matched.MockHeaders {
+			headers = append(headers, &proto.FetchHeaderEntry{Name: k, Value: v})
+		}
+		_ = proto.FetchFulfillRequest{
+			RequestID:       e.RequestID,
+			ResponseCode:    status,
+			ResponseHeaders: headers,
+			Body:            []byte(base64.StdEncoding.EncodeToString([]byte(matched.MockBody))),
+		}.Call(page)
+	case "add_headers":
+		var headers []*proto.FetchHeaderEntry
+		// Copy existing headers from the NetworkHeaders map
+		for k, v := range e.Request.Headers {
+			headers = append(headers, &proto.FetchHeaderEntry{
+				Name:  k,
+				Value: v.Str(),
+			})
+		}
+		// Add extra headers from route
+		for k, v := range matched.Headers {
+			headers = append(headers, &proto.FetchHeaderEntry{Name: k, Value: v})
+		}
+		_ = proto.FetchContinueRequest{
+			RequestID: e.RequestID,
+			Headers:   headers,
+		}.Call(page)
+	default:
+		// "continue" or unknown — pass through
+		_ = proto.FetchContinueRequest{RequestID: e.RequestID}.Call(page)
+	}
+}
+
+// matchRoutePattern performs simple wildcard matching (* as glob).
+func matchRoutePattern(pattern, url string) bool {
+	if pattern == "*" {
+		return true
+	}
+	// Simple wildcard: *text* style
+	if strings.HasPrefix(pattern, "*") && strings.HasSuffix(pattern, "*") {
+		return strings.Contains(url, pattern[1:len(pattern)-1])
+	}
+	if strings.HasPrefix(pattern, "*") {
+		return strings.HasSuffix(url, pattern[1:])
+	}
+	if strings.HasSuffix(pattern, "*") {
+		return strings.HasPrefix(url, pattern[:len(pattern)-1])
+	}
+	return strings.Contains(url, pattern)
+}
+
 func (t *BrowserTool) doRouteRemove(in *Input) string {
-	s, _, err := t.getSessionAndPage(in)
+	s, page, err := t.getSessionAndPage(in)
 	if err != nil {
 		return errStr(err)
 	}
@@ -251,8 +379,27 @@ func (t *BrowserTool) doRouteRemove(in *Input) string {
 	}
 	s.mu.Lock()
 	delete(s.routes, in.RouteID)
+	remaining := len(s.routes)
 	s.mu.Unlock()
+
+	// Disable interception when no routes remain
+	if remaining == 0 {
+		stopRouteInterception(s, page)
+	}
+
 	return fmt.Sprintf("Route %s removed.", in.RouteID)
+}
+
+// stopRouteInterception disables Fetch domain and stops the event loop.
+func stopRouteInterception(s *BrowserSession, page *rod.Page) {
+	s.mu.Lock()
+	if s.routeActive && s.routeStopCh != nil {
+		close(s.routeStopCh)
+		s.routeStopCh = nil
+		s.routeActive = false
+	}
+	s.mu.Unlock()
+	_ = proto.FetchDisable{}.Call(page)
 }
 
 func (t *BrowserTool) doRouteList(in *Input) string {

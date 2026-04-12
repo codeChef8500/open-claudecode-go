@@ -73,7 +73,7 @@ func (t *BrowserTool) doHTTPToBrowserCookies(in *Input) string {
 	}
 
 	// Get current page URL to extract cookies from jar
-	info := page.MustInfo()
+	info := safeInfo(page)
 	u, parseErr := url.Parse(info.URL)
 	if parseErr != nil {
 		return fmt.Sprintf("Error parsing current URL: %v", parseErr)
