@@ -25,6 +25,7 @@ import (
 	"github.com/wall-ai/agent-engine/internal/tool/powershell"
 	"github.com/wall-ai/agent-engine/internal/tool/sendmessage"
 	"github.com/wall-ai/agent-engine/internal/tool/sleep"
+	"github.com/wall-ai/agent-engine/internal/tool/syntheticoutput"
 	"github.com/wall-ai/agent-engine/internal/tool/taskcreate"
 	"github.com/wall-ai/agent-engine/internal/tool/taskget"
 	"github.com/wall-ai/agent-engine/internal/tool/tasklist"
@@ -91,6 +92,7 @@ func DefaultTools(runner agentool.SubAgentRunner, skillRegs ...SkillRegistryOpti
 		teamcreate.New(),
 		teamdelete.New(),
 		listpeers.New(),
+		syntheticoutput.New(),
 		// Git worktree
 		worktree.NewEnter(),
 		worktree.NewExit(),

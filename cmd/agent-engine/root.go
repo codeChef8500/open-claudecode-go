@@ -193,6 +193,12 @@ func buildAppConfig(wd string) (*util.AppConfig, error) {
 	if opts.Verbose || opts.Debug {
 		appCfg.VerboseMode = true
 	}
+	if opts.Continue {
+		appCfg.ContinueSession = true
+	}
+	if opts.Resume != "" {
+		appCfg.ResumeSessionID = opts.Resume
+	}
 
 	return appCfg, nil
 }

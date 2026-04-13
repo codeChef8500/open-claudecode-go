@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/wall-ai/agent-engine/internal/agent"
 	"github.com/wall-ai/agent-engine/internal/engine"
 	"github.com/wall-ai/agent-engine/internal/tool"
 )
@@ -36,7 +37,11 @@ type MailboxSender interface {
 // SendMessageTool sends messages between agents.
 type SendMessageTool struct {
 	tool.BaseTool
-	sender MailboxSender
+	sender   MailboxSender
+	asyncMgr *agent.AsyncLifecycleManager
+	// ResolveAgentName resolves a human name to an agent ID.
+	// Aligned with TS agentNameRegistry.get(input.to).
+	ResolveAgentName func(name string) string
 }
 
 // New creates a SendMessageTool without mailbox integration (legacy).
@@ -45,6 +50,16 @@ func New() *SendMessageTool { return &SendMessageTool{} }
 // NewWithMailbox creates a SendMessageTool with full mailbox integration.
 func NewWithMailbox(sender MailboxSender) *SendMessageTool {
 	return &SendMessageTool{sender: sender}
+}
+
+// NewWithDeps creates a SendMessageTool with all dependencies wired.
+func NewWithDeps(sender MailboxSender, asyncMgr *agent.AsyncLifecycleManager) *SendMessageTool {
+	return &SendMessageTool{sender: sender, asyncMgr: asyncMgr}
+}
+
+// NewWithAllDeps creates a SendMessageTool with full dependencies including name resolution.
+func NewWithAllDeps(sender MailboxSender, asyncMgr *agent.AsyncLifecycleManager, resolver func(string) string) *SendMessageTool {
+	return &SendMessageTool{sender: sender, asyncMgr: asyncMgr, ResolveAgentName: resolver}
 }
 
 func (t *SendMessageTool) Name() string           { return "SendMessage" }
@@ -143,7 +158,25 @@ func (t *SendMessageTool) Call(_ context.Context, input json.RawMessage, uctx *t
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: "Message sent to parent."}
 
 		default:
-			// Send to specific agent via mailbox.
+			// Resolve agent name → ID (aligned with TS agentNameRegistry).
+			targetID := in.To
+			if t.ResolveAgentName != nil {
+				if resolved := t.ResolveAgentName(in.To); resolved != "" {
+					targetID = resolved
+					slog.Debug("sendmessage: resolved name to agent ID",
+						slog.String("name", in.To),
+						slog.String("agent_id", resolved))
+				}
+			}
+
+			// Try routing to a running in-process async agent first.
+			if t.asyncMgr != nil {
+				if routed := t.tryRouteToAsyncAgent(targetID, msgContent); routed {
+					ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: fmt.Sprintf("Message delivered to running agent %s.", in.To)}
+					return
+				}
+			}
+			// Fall back to mailbox.
 			resultText := t.handleDirectSend(fromAgent, in.To, msgContent, in.Priority)
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: resultText}
 		}
@@ -177,6 +210,50 @@ func (t *SendMessageTool) handleDirectSend(from, to, message, priority string) s
 		return fmt.Sprintf("Message sent to %s (id: %s).", to, msgID)
 	}
 	return fmt.Sprintf("Message to %s queued (no mailbox configured).", to)
+}
+
+// tryRouteToAsyncAgent attempts to deliver a message to an in-process async agent.
+// For running agents: pushes to notification queue.
+// For stopped agents: auto-resumes in background (aligned with TS:822-844).
+// Returns true if delivery succeeded, and an optional status message.
+func (t *SendMessageTool) tryRouteToAsyncAgent(to, message string) bool {
+	if t.asyncMgr == nil {
+		return false
+	}
+
+	// Check if the target agent exists.
+	status, err := t.asyncMgr.GetStatus(to)
+	if err != nil {
+		return false
+	}
+
+	// Running/pending → push message to notification queue.
+	if status == agent.AsyncStatusRunning || status == agent.AsyncStatusPending {
+		t.asyncMgr.PushNotification(to, agent.Notification{
+			Type:    agent.NotificationTypeMessage,
+			AgentID: to,
+			Message: message,
+		})
+		slog.Info("sendmessage: routed to running async agent",
+			slog.String("to", to))
+		return true
+	}
+
+	// Stopped/done/failed/cancelled → auto-resume with message as new prompt.
+	// Aligned with TS resumeAgentBackground() in SendMessageTool.ts:822-844.
+	ctx := context.Background()
+	_, err = t.asyncMgr.Resume(ctx, to, message)
+	if err != nil {
+		slog.Warn("sendmessage: failed to resume stopped agent",
+			slog.String("to", to),
+			slog.Any("err", err))
+		return false
+	}
+
+	slog.Info("sendmessage: auto-resumed stopped agent",
+		slog.String("to", to),
+		slog.String("status", string(status)))
+	return true
 }
 
 // formatMessage formats the message content based on type.

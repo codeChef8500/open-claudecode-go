@@ -28,22 +28,22 @@ var CustomAgentDisallowedTools = map[string]bool{
 // AsyncAgentAllowedTools are the only tools an async (background) agent may use.
 // Aligned with ASYNC_AGENT_ALLOWED_TOOLS in constants/tools.ts.
 var AsyncAgentAllowedTools = map[string]bool{
-	"Read":           true,
-	"WebSearch":      true,
-	"TodoWrite":      true,
-	"Grep":           true,
-	"WebFetch":       true,
-	"Glob":           true,
-	"Bash":           true,
-	"PowerShell":     true,
-	"FileEdit":       true,
-	"FileWrite":      true,
-	"NotebookEdit":   true,
-	"Skill":          true,
+	"Read":            true,
+	"WebSearch":       true,
+	"TodoWrite":       true,
+	"Grep":            true,
+	"WebFetch":        true,
+	"Glob":            true,
+	"Bash":            true,
+	"PowerShell":      true,
+	"FileEdit":        true,
+	"FileWrite":       true,
+	"NotebookEdit":    true,
+	"Skill":           true,
 	"SyntheticOutput": true,
-	"ToolSearch":     true,
-	"EnterWorktree":  true,
-	"ExitWorktree":   true,
+	"ToolSearch":      true,
+	"EnterWorktree":   true,
+	"ExitWorktree":    true,
 }
 
 // InProcessTeammateAllowedTools are additional tools available to in-process teammates.
@@ -69,6 +69,18 @@ var CoordinatorModeAllowedTools = map[string]bool{
 	"SyntheticOutput": true,
 }
 
+// CoordinatorModeAllowedToolsList returns the coordinator tool whitelist as a
+// []string slice. Used by the deprecated CoordinatorAllowedTools variable in
+// coordinator_mode.go so that callers referencing the old name still get the
+// correct, TS-aligned tool set.
+func CoordinatorModeAllowedToolsList() []string {
+	out := make([]string, 0, len(CoordinatorModeAllowedTools))
+	for name := range CoordinatorModeAllowedTools {
+		out = append(out, name)
+	}
+	return out
+}
+
 // FilterToolsForAgent filters the available tools based on agent type and execution context.
 // This implements the layered filtering logic from agentToolUtils.ts filterToolsForAgent.
 //
@@ -90,6 +102,21 @@ func FilterToolsForAgent(
 		return allTools
 	}
 
+	// Step 0: Coordinator mode — the coordinator whitelist OVERRIDES the
+	// global disallow list. In TS, COORDINATOR_MODE_ALLOWED_TOOLS is applied
+	// independently, not after ALL_AGENT_DISALLOWED_TOOLS. Task and TaskStop
+	// are in AllAgentDisallowedTools (to prevent recursive spawning by workers)
+	// but the coordinator MUST have them.
+	if isCoordinator {
+		var pass []string
+		for _, t := range allTools {
+			if CoordinatorModeAllowedTools[t] {
+				pass = append(pass, t)
+			}
+		}
+		return pass // coordinator tools are final, no further filtering
+	}
+
 	// Step 1: Start with all tools, remove globally disallowed.
 	var filtered []string
 	for _, t := range allTools {
@@ -108,17 +135,6 @@ func FilterToolsForAgent(
 			}
 		}
 		filtered = pass
-	}
-
-	// Step 3: Coordinator mode — restrict to coordinator-only tools.
-	if isCoordinator {
-		var pass []string
-		for _, t := range filtered {
-			if CoordinatorModeAllowedTools[t] {
-				pass = append(pass, t)
-			}
-		}
-		return pass // coordinator tools are final, no further filtering
 	}
 
 	// Step 4: Async agents — restrict to async allowlist.

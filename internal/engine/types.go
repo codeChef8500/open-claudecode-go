@@ -376,6 +376,7 @@ const (
 	QuerySourceSkill         QuerySource = "skill"
 	QuerySourceSlashCommand  QuerySource = "slash_command"
 	QuerySourceForkedCommand QuerySource = "forked_command"
+	QuerySourceNotification  QuerySource = "notification"
 )
 
 // QueryParams contains per-request parameters for Engine.SubmitMessage.

@@ -6,8 +6,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
+	"github.com/wall-ai/agent-engine/internal/agent"
 	"github.com/wall-ai/agent-engine/internal/analytics"
 	"github.com/wall-ai/agent-engine/internal/command"
 	"github.com/wall-ai/agent-engine/internal/engine"
@@ -17,6 +19,9 @@ import (
 	"github.com/wall-ai/agent-engine/internal/prompt"
 	"github.com/wall-ai/agent-engine/internal/provider"
 	"github.com/wall-ai/agent-engine/internal/skill"
+	"github.com/wall-ai/agent-engine/internal/tool/agentool"
+	"github.com/wall-ai/agent-engine/internal/tool/listpeers"
+	"github.com/wall-ai/agent-engine/internal/tool/sendmessage"
 	"github.com/wall-ai/agent-engine/internal/toolset"
 	"github.com/wall-ai/agent-engine/internal/util"
 )
@@ -30,16 +35,19 @@ type BootstrapConfig struct {
 
 // BootstrapResult holds the fully initialised components ready for use.
 type BootstrapResult struct {
-	Engine         *engine.Engine
-	Provider       provider.Provider
-	Checker        *permission.Checker
-	PermStore      *permission.PermissionStore
-	CmdExecutor    *command.Executor
-	MemoryStore    *memory.Store
-	SessionMemory  *memory.SessionMemoryManager
-	CostTracker    *provider.CostTracker
-	SessionTracker *analytics.SessionTracker
-	SystemPrompt   *prompt.BuiltSystemPrompt
+	Engine            *engine.Engine
+	Provider          provider.Provider
+	Checker           *permission.Checker
+	PermStore         *permission.PermissionStore
+	CmdExecutor       *command.Executor
+	MemoryStore       *memory.Store
+	SessionMemory     *memory.SessionMemoryManager
+	CostTracker       *provider.CostTracker
+	SessionTracker    *analytics.SessionTracker
+	SystemPrompt      *prompt.BuiltSystemPrompt
+	AgentRunner       *agent.AgentRunner
+	AsyncManager      *agent.AsyncLifecycleManager
+	NotificationQueue *agent.NotificationQueue
 }
 
 // Bootstrap wires together all subsystems for an interactive session.
@@ -140,7 +148,104 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 
 	slog.Info("skills discovered", slog.Int("count", len(skillReg.AllSkills())))
 
-	// ── 6. Engine ──────────────────────────────────────────────────────────
+	// ── 6. Tools + AgentRunner + AsyncManager ────────────────────────────
+	// Build tools initially with nil runner (breaks circular dep).
+	allTools := toolset.DefaultTools(nil, skillReg)
+
+	// engineTools is the tool set exposed to the main Engine.
+	// In coordinator mode it is filtered; otherwise it equals allTools.
+	engineTools := allTools
+
+	// ── 6a. Coordinator mode: inject system prompt + filter tools ────────
+	if agent.IsCoordinatorMode() {
+		coordPrompt := agent.BuildCoordinatorSystemPrompt(agent.CoordinatorConfig{
+			MaxWorkers:        4,
+			MaxTurnsPerWorker: 100,
+			WorkDir:           workDir,
+			DefaultModel:      appCfg.Model,
+		}, nil)
+		sysPrompt.Text = coordPrompt + "\n\n" + sysPrompt.Text
+		slog.Info("coordinator mode: system prompt injected")
+
+		// Filter tools to coordinator whitelist (strict 4-tool set from toolfilter.go,
+		// aligned with TS COORDINATOR_MODE_ALLOWED_TOOLS).
+		var filtered []engine.Tool
+		for _, t := range allTools {
+			if agent.CoordinatorModeAllowedTools[t.Name()] {
+				filtered = append(filtered, t)
+			}
+		}
+		engineTools = filtered
+		slog.Info("coordinator mode: tools filtered", slog.Int("count", len(engineTools)))
+	}
+
+	// Create AgentRunner for sub-agent execution.
+	// NOTE: AgentRunner receives the FULL tool set so that worker agents
+	// spawned by the coordinator can access all tools (WebSearch, WebFetch,
+	// Bash, FileEdit, etc.). The coordinator's own Engine uses engineTools.
+	agentRunner := agent.NewAgentRunner(agent.AgentRunnerConfig{
+		Caller:   prov,
+		AllTools: allTools,
+	})
+	result.AgentRunner = agentRunner
+
+	// Create AsyncLifecycleManager for background agent execution.
+	asyncMgr := agent.NewAsyncLifecycleManager(agentRunner)
+	result.AsyncManager = asyncMgr
+
+	// Wire global notification queue for task-notification injection.
+	globalNotifQueue := agent.NewNotificationQueue(100)
+	asyncMgr.SetGlobalNotificationSink(globalNotifQueue)
+	result.NotificationQueue = globalNotifQueue
+
+	// ── Agent name registry (name → agentID) ────────────────────────────
+	// Thread-safe map for SendMessage name resolution.
+	// Aligned with TS AppState.agentNameRegistry.
+	var nameRegistry sync.Map
+	registerName := func(name, agentID string) {
+		nameRegistry.Store(name, agentID)
+		slog.Info("bootstrap: registered agent name",
+			slog.String("name", name),
+			slog.String("agent_id", agentID))
+	}
+	resolveName := func(name string) string {
+		if v, ok := nameRegistry.Load(name); ok {
+			return v.(string)
+		}
+		return ""
+	}
+
+	// Replace the placeholder AgentTool with a fully wired one.
+	agentCfg := agentool.AgentToolConfig{
+		Runner:            agentRunner,
+		AsyncManager:      asyncMgr,
+		IsCoordinatorMode: agent.IsCoordinatorMode(),
+		RegisterAgentName: registerName,
+	}
+	// Wire into engineTools (coordinator's own tool set).
+	for i, t := range engineTools {
+		switch t.Name() {
+		case "Task":
+			engineTools[i] = agentool.NewWithConfig(agentCfg)
+		case "list_peers":
+			engineTools[i] = listpeers.NewWithManager(asyncMgr)
+		case "SendMessage":
+			engineTools[i] = sendmessage.NewWithAllDeps(nil, asyncMgr, resolveName)
+		}
+	}
+	// Also wire into allTools so workers get the fully-configured implementations.
+	for i, t := range allTools {
+		switch t.Name() {
+		case "Task":
+			allTools[i] = agentool.NewWithConfig(agentCfg)
+		case "list_peers":
+			allTools[i] = listpeers.NewWithManager(asyncMgr)
+		case "SendMessage":
+			allTools[i] = sendmessage.NewWithAllDeps(nil, asyncMgr, resolveName)
+		}
+	}
+
+	// ── 7. Engine ──────────────────────────────────────────────────────────
 	eng, err := engine.New(engine.EngineConfig{
 		Provider:           appCfg.Provider,
 		APIKey:             appCfg.APIKey,
@@ -155,7 +260,7 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 		PermissionMode:     appCfg.PermissionMode,
 		CustomSystemPrompt: sysPrompt.Text,
 		Verbose:            appCfg.VerboseMode,
-	}, prov, toolset.DefaultTools(nil, skillReg))
+	}, prov, engineTools)
 	if err != nil {
 		return nil, fmt.Errorf("create engine: %w", err)
 	}
@@ -167,18 +272,18 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 	eng.SetPromptBuilder(prompt.NewAdapter())
 	eng.SetPermissionChecker(permission.NewAdapterWithChecker(checker))
 
-	// ── 7. Command executor ────────────────────────────────────────────────
+	// ── 8. Command executor ────────────────────────────────────────────────
 	cmdExec := command.NewExecutor(command.Default())
 	result.CmdExecutor = cmdExec
 
-	// ── 8. Cost + session tracking ─────────────────────────────────────────
+	// ── 9. Cost + session tracking ─────────────────────────────────────────
 	costTracker := provider.NewCostTracker()
 	result.CostTracker = costTracker
 
 	sessionTracker := analytics.NewSessionTracker(sessionID, appCfg.Model, workDir)
 	result.SessionTracker = sessionTracker
 
-	// ── 9. Analytics ───────────────────────────────────────────────────────
+	// ── 10. Analytics ──────────────────────────────────────────────────────
 	analytics.SetSessionID(sessionID)
 	analyticsPath := analytics.DefaultAnalyticsPath()
 	if analyticsPath != "" {
@@ -210,6 +315,9 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 func Shutdown(result *BootstrapResult) {
 	if result == nil {
 		return
+	}
+	if result.AsyncManager != nil {
+		result.AsyncManager.ShutdownAll(10 * time.Second)
 	}
 	if result.SessionTracker != nil {
 		result.SessionTracker.EmitSessionEnd()

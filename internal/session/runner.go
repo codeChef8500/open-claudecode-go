@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/wall-ai/agent-engine/internal/agent"
 	"github.com/wall-ai/agent-engine/internal/analytics"
 	"github.com/wall-ai/agent-engine/internal/buddy"
 	"github.com/wall-ai/agent-engine/internal/command"
@@ -66,6 +67,30 @@ func NewRunner(result *BootstrapResult) *Runner {
 // SetObserver attaches a buddy observer that fires companion reactions.
 func (r *Runner) SetObserver(obs *buddy.Observer) {
 	r.observer = obs
+}
+
+// StartNotificationPoller launches a background goroutine that periodically
+// checks for pending task-notifications from async agents and injects them
+// into the engine. This ensures notifications are delivered even when the
+// coordinator is idle waiting for user input (aligned with TS QueryEngine
+// idle drain behaviour).
+// Call cancel on the returned context to stop the poller.
+func (r *Runner) StartNotificationPoller(ctx context.Context, interval time.Duration) {
+	if r.result.NotificationQueue == nil {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				r.drainAndInjectNotifications(ctx)
+			}
+		}
+	}()
 }
 
 // HandleInput processes a single user input (message or slash command).
@@ -492,4 +517,89 @@ func (r *Runner) handleMessage(ctx context.Context, text string) {
 			slog.Debug("runner: unhandled event", slog.String("type", string(ev.Type)))
 		}
 	}
+
+	// ── Phase 3: Check for async agent completion notifications ────────
+	// After the engine finishes its current turn, drain any pending
+	// task-notification messages from background agents and re-submit
+	// them as user messages so the coordinator/parent can act on them.
+	r.drainAndInjectNotifications(ctx)
+}
+
+// drainAndInjectNotifications checks the global notification queue and
+// injects any pending task-notification XML into the engine as user messages.
+func (r *Runner) drainAndInjectNotifications(ctx context.Context) {
+	nq := r.result.NotificationQueue
+	if nq == nil {
+		return
+	}
+
+	notifs := nq.DrainAll()
+	if len(notifs) == 0 {
+		return
+	}
+
+	xmlText := agent.FormatTaskNotificationXML(notifs)
+	if xmlText == "" {
+		return
+	}
+
+	slog.Info("runner: injecting task-notification",
+		slog.Int("count", len(notifs)))
+
+	// Submit as a notification-source user message.
+	ch := r.result.Engine.SubmitMessage(ctx, engine.QueryParams{
+		Text:   xmlText,
+		Source: engine.QuerySourceNotification,
+	})
+
+	// Drain the response events (same as handleMessage).
+	for ev := range ch {
+		if ev == nil {
+			continue
+		}
+		switch ev.Type {
+		case engine.EventTextDelta:
+			r.OnTextDelta(ev.Text)
+		case engine.EventToolUse:
+			inputStr := ""
+			if ev.ToolInput != nil {
+				if data, err := json.Marshal(ev.ToolInput); err == nil {
+					inputStr = string(data)
+				}
+			}
+			r.OnToolStart(ev.ToolID, ev.ToolName, inputStr)
+			r.result.SessionTracker.RecordToolCall(ev.ToolName, false)
+		case engine.EventToolProgress:
+			content := ""
+			if ev.Progress != nil {
+				content = ev.Progress.Content
+			}
+			r.OnToolProgress(ev.ToolID, ev.ToolName, content)
+		case engine.EventToolResult:
+			r.OnToolDone(ev.ToolID, ev.ToolName, ev.Text, ev.IsError)
+		case engine.EventUsage:
+			if ev.Usage != nil {
+				r.result.CostTracker.RecordTurn(
+					r.result.Engine.Store().GetString("model"),
+					ev.Usage.InputTokens,
+					ev.Usage.OutputTokens,
+					ev.Usage.CacheCreationInputTokens,
+					ev.Usage.CacheReadInputTokens,
+				)
+			}
+		case engine.EventError:
+			r.OnError(fmt.Errorf("%s", ev.Error))
+		case engine.EventDone:
+			r.result.SessionTracker.RecordAssistantMessage()
+			r.result.SessionTracker.RecordTurn()
+			r.OnDone()
+		case engine.EventSystemMessage:
+			r.OnSystem(ev.Text)
+		default:
+			slog.Debug("runner: unhandled notification event", slog.String("type", string(ev.Type)))
+		}
+	}
+
+	// Recursive: check if more notifications arrived while we were processing.
+	r.drainAndInjectNotifications(ctx)
 }

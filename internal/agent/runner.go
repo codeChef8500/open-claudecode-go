@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wall-ai/agent-engine/internal/engine"
+	"github.com/wall-ai/agent-engine/internal/prompt"
 )
 
 // AgentRunner is the core agent execution lifecycle manager.
@@ -278,6 +279,12 @@ func (r *AgentRunner) RunAgent(ctx context.Context, params RunAgentParams) *Agen
 			IsFork:    params.IsFork,
 		})
 	}
+
+	// 10b. Inject environment context (date/time, platform, cwd) so workers
+	// know the current date. Aligned with TS buildAgentSystemPrompt which
+	// includes env context for all agents.
+	envBlock := prompt.BuildEnvContext(workDir).Render()
+	systemPrompt += "\n\n" + envBlock
 
 	// Append memory prompt if memory is configured.
 	if r.memoryManager != nil && effectiveDef.Memory != "" {

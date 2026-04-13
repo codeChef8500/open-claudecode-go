@@ -52,6 +52,10 @@ type AppConfig struct {
 	HTTPPort int    `json:"http_port"`
 	Proxy    string `json:"proxy,omitempty"`
 
+	// Session resume
+	ContinueSession bool   `json:"-"` // --continue: resume most recent session
+	ResumeSessionID string `json:"-"` // --resume <id>: resume specific session
+
 	// Internal
 	WorkDir     string   `json:"-"`
 	SessionID   string   `json:"-"`

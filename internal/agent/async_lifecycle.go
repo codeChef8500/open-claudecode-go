@@ -56,6 +56,8 @@ type AsyncLifecycleManager struct {
 	mu     sync.RWMutex
 	agents map[string]*AsyncAgent
 	runner *AgentRunner
+	// globalSink receives completion notifications for the parent/main loop.
+	globalSink *NotificationQueue
 }
 
 // NewAsyncLifecycleManager creates a new async lifecycle manager.
@@ -64,6 +66,14 @@ func NewAsyncLifecycleManager(runner *AgentRunner) *AsyncLifecycleManager {
 		agents: make(map[string]*AsyncAgent),
 		runner: runner,
 	}
+}
+
+// SetGlobalNotificationSink sets the queue where completion notifications
+// are forwarded for the parent/main engine loop to consume.
+func (m *AsyncLifecycleManager) SetGlobalNotificationSink(q *NotificationQueue) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.globalSink = q
 }
 
 // Launch starts a new background agent execution.
@@ -80,9 +90,14 @@ func (m *AsyncLifecycleManager) Launch(parentCtx context.Context, params RunAgen
 	}
 	params.ExistingAgentID = agentID
 
+	var def AgentDefinition
+	if params.AgentDef != nil {
+		def = *params.AgentDef
+	}
+
 	agent := &AsyncAgent{
 		AgentID:       agentID,
-		Definition:    *params.AgentDef,
+		Definition:    def,
 		Status:        AsyncStatusPending,
 		StartedAt:     time.Now(),
 		cancel:        cancel,
@@ -135,12 +150,27 @@ func (m *AsyncLifecycleManager) runAsync(ctx context.Context, agent *AsyncAgent,
 	}
 	agent.mu.Unlock()
 
-	// Push completion notification.
-	agent.notifications.Push(Notification{
-		Type:    NotificationTypeComplete,
-		AgentID: agent.AgentID,
-		Message: formatCompletionNotification(agent),
-	})
+	// Push completion notification to agent's own queue.
+	// Populate extended fields for TS-aligned task-notification XML.
+	duration := agent.FinishedAt.Sub(agent.StartedAt)
+	notif := Notification{
+		Type:        NotificationTypeComplete,
+		AgentID:     agent.AgentID,
+		Description: params.Description,
+		Message:     formatCompletionNotification(agent),
+		Usage: &NotificationUsage{
+			DurationMs: int(duration.Milliseconds()),
+		},
+	}
+	if result.TurnCount > 0 {
+		notif.Usage.ToolUses = result.TurnCount
+	}
+	agent.notifications.Push(notif)
+
+	// Also push to global sink for parent/main loop injection.
+	if m.globalSink != nil {
+		m.globalSink.Push(notif)
+	}
 
 	slog.Info("async lifecycle: finished",
 		slog.String("agent_id", agent.AgentID),
@@ -218,6 +248,19 @@ func (m *AsyncLifecycleManager) GetResult(agentID string) (*AgentRunResult, erro
 	return agent.result, nil
 }
 
+// PushNotification pushes a notification into a specific agent's queue.
+func (m *AsyncLifecycleManager) PushNotification(agentID string, n Notification) {
+	m.mu.RLock()
+	agent, ok := m.agents[agentID]
+	m.mu.RUnlock()
+
+	if !ok {
+		return
+	}
+
+	agent.notifications.Push(n)
+}
+
 // DrainNotifications returns and clears pending notifications for an agent.
 func (m *AsyncLifecycleManager) DrainNotifications(agentID string) []Notification {
 	m.mu.RLock()
@@ -257,6 +300,94 @@ func (m *AsyncLifecycleManager) AllAgents() []*AsyncAgent {
 		agents = append(agents, a)
 	}
 	return agents
+}
+
+// PeerInfo holds a snapshot of an async agent's status for external consumers.
+type PeerInfo struct {
+	AgentID   string
+	Status    string
+	StartedAt time.Time
+	Duration  time.Duration
+	AgentType string
+}
+
+// ListPeerInfos returns status info for all tracked agents.
+func (m *AsyncLifecycleManager) ListPeerInfos() []PeerInfo {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	infos := make([]PeerInfo, 0, len(m.agents))
+	for _, a := range m.agents {
+		a.mu.RLock()
+		info := PeerInfo{
+			AgentID:   a.AgentID,
+			Status:    string(a.Status),
+			StartedAt: a.StartedAt,
+			AgentType: a.Definition.AgentType,
+		}
+		if !a.FinishedAt.IsZero() {
+			info.Duration = a.FinishedAt.Sub(a.StartedAt)
+		}
+		a.mu.RUnlock()
+		infos = append(infos, info)
+	}
+	return infos
+}
+
+// Resume re-launches a stopped/completed agent with a new prompt message.
+// Aligned with TS resumeAgentBackground() in SendMessageTool.ts:824.
+// Returns the (same) agent ID on success.
+func (m *AsyncLifecycleManager) Resume(parentCtx context.Context, agentID, prompt string) (string, error) {
+	m.mu.RLock()
+	existing, ok := m.agents[agentID]
+	m.mu.RUnlock()
+
+	if !ok {
+		return "", fmt.Errorf("agent %s not found for resume", agentID)
+	}
+
+	existing.mu.RLock()
+	status := existing.Status
+	existing.mu.RUnlock()
+
+	// Only resume stopped agents.
+	if status == AsyncStatusRunning || status == AsyncStatusPending {
+		return "", fmt.Errorf("agent %s is still running, use PushNotification instead", agentID)
+	}
+
+	// Re-use the original agent definition.
+	params := RunAgentParams{
+		AgentDef:        &existing.Definition,
+		Task:            prompt,
+		Background:      true,
+		ExistingAgentID: agentID,
+		Description:     existing.Definition.AgentType + " (resumed)",
+	}
+
+	// Create fresh context and agent state.
+	ctx, cancel := context.WithCancel(parentCtx)
+	resumed := &AsyncAgent{
+		AgentID:       agentID,
+		Definition:    existing.Definition,
+		Status:        AsyncStatusPending,
+		StartedAt:     time.Now(),
+		cancel:        cancel,
+		done:          make(chan struct{}),
+		notifications: NewNotificationQueue(100),
+		progress:      NewProgressTracker(agentID),
+	}
+
+	m.mu.Lock()
+	m.agents[agentID] = resumed // replace old entry
+	m.mu.Unlock()
+
+	params.NotificationQueue = resumed.notifications
+	go m.runAsync(ctx, resumed, params)
+
+	slog.Info("async lifecycle: resumed agent",
+		slog.String("agent_id", agentID))
+
+	return agentID, nil
 }
 
 // Cleanup removes finished agents from tracking.

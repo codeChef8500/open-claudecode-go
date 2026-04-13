@@ -13,6 +13,8 @@
     .\scripts\run-cli.ps1 -Verbose -Model "gpt-4o"
 #>
 
+# $env:CLAUDE_CODE_COORDINATOR_MODE = "1"; $env:AGENT_ENGINE_PERMISSION_MODE = "bypass"; .\start.ps1 -s -p "请帮我完成以下任务：1) 搜索最近一周（2025年4月7日-4月13日）的黄金价格走势和相关舆情新闻 2) 基于收集到的数据，分析黄金价格趋势 3) 预测未来三天（4月14-16日）的黄金价格区间 4) 给出具体的黄金投资计划建议（包括买入/卖出时机、仓位建议、止损点）。请并行派出多个worker分别搜索价格数据和舆情信息，然后综合分析给出报告。"
+
 param(
     [string]$Prompt = "",
     [string]$Model = "",

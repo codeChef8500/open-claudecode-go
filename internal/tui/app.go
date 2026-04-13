@@ -618,6 +618,23 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.refreshViewport()
 		a.viewport.GotoBottom()
 
+	case RestoreMsg:
+		// Restore session history: keep banner, insert restored messages, add status line.
+		var kept []ChatMessage
+		for _, m := range a.messages {
+			if m.Role == "banner" {
+				kept = append(kept, m)
+			}
+		}
+		if msg.Summary != "" {
+			kept = append(kept, ChatMessage{Role: "system", Content: "[Restored session — compacted summary available]"})
+		}
+		kept = append(kept, msg.Messages...)
+		kept = append(kept, ChatMessage{Role: "system", Content: "Session restored. You may continue the conversation."})
+		a.messages = kept
+		a.refreshViewport()
+		a.viewport.GotoBottom()
+
 	case PermissionAnswerMsg:
 		// Answered — engine handles this via callback.
 

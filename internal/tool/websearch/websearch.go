@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -61,8 +62,9 @@ func New(apiKey, baseURL string) *WebSearchTool {
 		baseURL: baseURL,
 		client:  &http.Client{Timeout: httpTimeout},
 	}
-	// Default provider is the built-in DuckDuckGo HTML search backend.
-	t.provider = &ddgProvider{tool: t}
+	// Auto-select the best provider based on env vars.
+	// Priority: Brave (API key) > DuckDuckGo (fallback).
+	t.provider = ResolveProvider(t)
 	return t
 }
 
@@ -303,7 +305,7 @@ func (p *ddgProvider) Search(ctx context.Context, query string, maxResults int, 
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "text/html")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7")
@@ -315,6 +317,10 @@ func (p *ddgProvider) Search(ctx context.Context, query string, maxResults int, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == 202 || resp.StatusCode == 403 {
+			return nil, fmt.Errorf("DuckDuckGo blocked the request (CAPTCHA/rate-limit, HTTP %d). "+
+				"Set AGENT_ENGINE_SEARCH_API_KEY with a Brave Search API key for reliable search", resp.StatusCode)
+		}
 		return nil, fmt.Errorf("DuckDuckGo returned status %d", resp.StatusCode)
 	}
 
@@ -323,7 +329,22 @@ func (p *ddgProvider) Search(ctx context.Context, query string, maxResults int, 
 		return nil, err
 	}
 
-	return parseDDGHTML(body, maxResults, allowedDomains, blockedDomains)
+	hits, err := parseDDGHTML(body, maxResults, allowedDomains, blockedDomains)
+	if err != nil {
+		return nil, err
+	}
+
+	// Detect CAPTCHA: DDG returned 200 but the page has no results and contains
+	// CAPTCHA indicators. This happens after repeated automated requests.
+	if len(hits) == 0 && detectDDGCaptcha(body) {
+		slog.Warn("websearch: DuckDuckGo returned CAPTCHA page",
+			slog.String("query", query), slog.Int("body_len", len(body)))
+		return nil, fmt.Errorf("DuckDuckGo returned a CAPTCHA page instead of search results. " +
+			"This happens when too many automated requests are made. " +
+			"Set AGENT_ENGINE_SEARCH_API_KEY with a Brave Search API key for reliable search")
+	}
+
+	return hits, nil
 }
 
 // parseDDGHTML extracts search hits from DuckDuckGo's HTML search response.
@@ -478,6 +499,18 @@ func domainMatchesFilter(rawURL string, allowed, blocked map[string]bool) bool {
 		}
 	}
 	return true
+}
+
+// detectDDGCaptcha checks whether DDG returned a CAPTCHA/challenge page.
+func detectDDGCaptcha(body []byte) bool {
+	s := strings.ToLower(string(body))
+	indicators := []string{"captcha", "challenge", "blocked", "unusual traffic", "robot"}
+	for _, ind := range indicators {
+		if strings.Contains(s, ind) {
+			return true
+		}
+	}
+	return false
 }
 
 func errBlock(msg string) *engine.ContentBlock {

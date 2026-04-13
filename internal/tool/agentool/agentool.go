@@ -66,6 +66,9 @@ type AgentToolConfig struct {
 	ParentMessages []*engine.Message
 	// IsCoordinatorMode indicates the parent is in coordinator mode.
 	IsCoordinatorMode bool
+	// RegisterAgentName registers a name→agentID mapping for SendMessage routing.
+	// Aligned with TS AgentTool.tsx:700-712 agentNameRegistry.
+	RegisterAgentName func(name, agentID string)
 }
 
 // AgentTool spawns a sub-agent to complete a task.
@@ -211,8 +214,11 @@ func (t *AgentTool) Call(ctx context.Context, input json.RawMessage, uctx *tool.
 	}
 
 	// Resolve model: in coordinator mode, ignore model param (coordinator picks).
+	// Also force async: coordinator delegates all work to background workers.
+	// Aligned with TS AgentTool.tsx:567 — isCoordinator → shouldRunAsync = true.
 	if t.cfg.IsCoordinatorMode {
 		in.Model = ""
+		in.RunInBackground = true
 	}
 
 	// Resolve team name from input or parent context.
@@ -391,6 +397,15 @@ func (t *AgentTool) handleAsyncPath(ctx context.Context, agentID string, in Inpu
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: err.Error(), IsError: true}
 			return
 		}
+		// Register name → agentId for SendMessage routing (aligned with TS:703-712).
+		// Post-launch so we don't leave a stale entry if spawn fails.
+		if in.Name != "" && t.cfg.RegisterAgentName != nil {
+			t.cfg.RegisterAgentName(in.Name, launchedID)
+			slog.Info("agentool: registered agent name",
+				slog.String("name", in.Name),
+				slog.String("agent_id", launchedID))
+		}
+
 		ch <- &engine.ContentBlock{
 			Type: engine.ContentTypeText,
 			Text: fmt.Sprintf("Started background agent %s. Task: %s", launchedID, in.Description),

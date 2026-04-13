@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/wall-ai/agent-engine/internal/buddy"
@@ -17,14 +18,61 @@ import (
 
 // runInteractiveMode launches the full-screen Bubbletea TUI.
 func runInteractiveMode(ctx context.Context, appCfg *util.AppConfig, wd string) error {
+	// ── Session restore: resolve session ID from --continue / --resume ───
+	var restoreResult *session.RestoreResult
+	restoredSessionID := appCfg.ResumeSessionID
+
+	if appCfg.ContinueSession && restoredSessionID == "" {
+		// --continue: find the most recent session
+		store := session.NewStorage(session.DefaultStorageDir())
+		latestID, err := store.LatestSessionID()
+		if err != nil {
+			slog.Warn("session continue: failed to list sessions", slog.Any("err", err))
+		} else if latestID == "" {
+			slog.Info("session continue: no previous sessions found")
+		} else {
+			restoredSessionID = latestID
+		}
+	}
+
+	if restoredSessionID != "" {
+		store := session.NewStorage(session.DefaultStorageDir())
+		rr, err := store.RestoreSession(restoredSessionID)
+		if err != nil {
+			slog.Warn("session restore failed", slog.String("id", restoredSessionID), slog.Any("err", err))
+		} else {
+			restoreResult = rr
+			if warnings := session.ValidateRestore(rr); len(warnings) > 0 {
+				for _, w := range warnings {
+					slog.Warn("session restore warning", slog.String("warning", w))
+				}
+			}
+			slog.Info("session restore loaded",
+				slog.String("id", restoredSessionID),
+				slog.Int("messages", len(rr.Messages)))
+		}
+	}
+
+	// Use restored session ID for bootstrap so the engine reuses it.
+	bootstrapSessionID := ""
+	if restoreResult != nil {
+		bootstrapSessionID = restoredSessionID
+	}
+
 	result, err := session.Bootstrap(ctx, session.BootstrapConfig{
 		AppConfig: appCfg,
 		WorkDir:   wd,
+		SessionID: bootstrapSessionID,
 	})
 	if err != nil {
 		return fmt.Errorf("bootstrap: %w", err)
 	}
 	defer session.Shutdown(result)
+
+	// Seed engine history from restored messages so the LLM has context.
+	if restoreResult != nil && len(restoreResult.Messages) > 0 {
+		result.Engine.SeedHistory(restoreResult.Messages)
+	}
 
 	runner := session.NewRunner(result)
 
@@ -120,6 +168,12 @@ func runInteractiveMode(ctx context.Context, appCfg *util.AppConfig, wd string) 
 	// BUG-7 fix: wire callbacks once to avoid per-submission data race.
 	wireRunnerCallbacks(runner, program)
 
+	// Start idle notification poller so coordinator receives task-notifications
+	// even while waiting for user input (aligned with TS idle drain).
+	pollerCtx, pollerCancel := context.WithCancel(ctx)
+	defer pollerCancel()
+	runner.StartNotificationPoller(pollerCtx, 1*time.Second)
+
 	// P3+P5: Auto-load companion on startup; auto-hatch if none exists
 	configDir := session.BuddyConfigDir()
 	userID := buddy.GetOrCreateUserID(configDir)
@@ -140,6 +194,18 @@ func runInteractiveMode(ctx context.Context, appCfg *util.AppConfig, wd string) 
 			program.Send(tui.CompanionReactionMsg{Text: text})
 		})
 		runner.SetObserver(obs)
+	}
+
+	// ── Send restored session history to TUI ────────────────────────────
+	if restoreResult != nil && len(restoreResult.Messages) > 0 {
+		chatMsgs := tui.MessagesToChat(restoreResult.Messages)
+		go func() {
+			program.Send(tui.RestoreMsg{
+				Messages:  chatMsgs,
+				SessionID: restoredSessionID,
+				Summary:   restoreResult.SummaryText,
+			})
+		}()
 	}
 
 	if _, err := program.Run(); err != nil {

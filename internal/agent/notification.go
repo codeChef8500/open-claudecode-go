@@ -23,6 +23,13 @@ const (
 	NotificationTypeStatus   NotificationType = "status"
 )
 
+// NotificationUsage tracks token/tool usage for a completed agent.
+type NotificationUsage struct {
+	TotalTokens int `json:"total_tokens"`
+	ToolUses    int `json:"tool_uses"`
+	DurationMs  int `json:"duration_ms"`
+}
+
 // Notification represents a single notification from a child agent to its parent.
 type Notification struct {
 	Type      NotificationType `json:"type"`
@@ -30,6 +37,14 @@ type Notification struct {
 	AgentType string           `json:"agent_type,omitempty"`
 	Message   string           `json:"message"`
 	Timestamp time.Time        `json:"timestamp"`
+
+	// Extended fields aligned with TS LocalAgentTask.tsx enqueueAgentNotification.
+	Description    string             `json:"description,omitempty"`
+	ToolUseID      string             `json:"tool_use_id,omitempty"`
+	Usage          *NotificationUsage `json:"usage,omitempty"`
+	WorktreePath   string             `json:"worktree_path,omitempty"`
+	WorktreeBranch string             `json:"worktree_branch,omitempty"`
+	Notified       bool               `json:"-"` // de-dup flag, not serialized
 }
 
 // NotificationQueue is a bounded, thread-safe queue of notifications.
@@ -226,4 +241,79 @@ func (a *NotificationAggregator) RemoveAgent(agentID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	delete(a.queues, agentID)
+}
+
+// FormatTaskNotificationXML formats notifications as <task-notification> XML blocks
+// for injection into the parent agent's conversation as user messages.
+// Aligned with claude-code-main's LocalAgentTask.tsx enqueueAgentNotification().
+func FormatTaskNotificationXML(notifications []Notification) string {
+	if len(notifications) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	for _, n := range notifications {
+		status := "completed"
+		switch n.Type {
+		case NotificationTypeError:
+			status = "failed"
+		case NotificationTypeStatus:
+			if strings.Contains(n.Message, "cancelled") || strings.Contains(n.Message, "killed") {
+				status = "killed"
+			}
+		}
+
+		// Build summary like TS: Agent "description" completed / failed: error / was stopped
+		desc := n.Description
+		if desc == "" {
+			desc = truncID(n.AgentID)
+		}
+		var summary string
+		switch status {
+		case "completed":
+			summary = fmt.Sprintf(`Agent "%s" completed`, desc)
+		case "failed":
+			errMsg := n.Message
+			if len(errMsg) > 200 {
+				errMsg = errMsg[:200] + "..."
+			}
+			summary = fmt.Sprintf(`Agent "%s" failed: %s`, desc, errMsg)
+		case "killed":
+			summary = fmt.Sprintf(`Agent "%s" was stopped`, desc)
+		}
+
+		sb.WriteString("<task-notification>\n")
+		sb.WriteString(fmt.Sprintf("<task-id>%s</task-id>\n", n.AgentID))
+
+		// Optional: tool-use-id (aligned with TS TOOL_USE_ID_TAG)
+		if n.ToolUseID != "" {
+			sb.WriteString(fmt.Sprintf("<tool-use-id>%s</tool-use-id>\n", n.ToolUseID))
+		}
+
+		sb.WriteString(fmt.Sprintf("<status>%s</status>\n", status))
+		sb.WriteString(fmt.Sprintf("<summary>%s</summary>\n", summary))
+
+		// Optional: result (only if non-empty, aligned with TS)
+		if n.Message != "" {
+			sb.WriteString(fmt.Sprintf("<result>%s</result>\n", n.Message))
+		}
+
+		// Optional: usage (aligned with TS usage section)
+		if n.Usage != nil {
+			sb.WriteString(fmt.Sprintf("<usage><total_tokens>%d</total_tokens><tool_uses>%d</tool_uses><duration_ms>%d</duration_ms></usage>\n",
+				n.Usage.TotalTokens, n.Usage.ToolUses, n.Usage.DurationMs))
+		}
+
+		// Optional: worktree (aligned with TS WORKTREE_TAG)
+		if n.WorktreePath != "" {
+			sb.WriteString(fmt.Sprintf("<worktree><worktree-path>%s</worktree-path>", n.WorktreePath))
+			if n.WorktreeBranch != "" {
+				sb.WriteString(fmt.Sprintf("<worktree-branch>%s</worktree-branch>", n.WorktreeBranch))
+			}
+			sb.WriteString("</worktree>\n")
+		}
+
+		sb.WriteString("</task-notification>\n")
+	}
+	return sb.String()
 }

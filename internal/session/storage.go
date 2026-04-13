@@ -160,3 +160,16 @@ func (s *Storage) ListSessions() ([]*SessionMetadata, error) {
 	})
 	return metas, nil
 }
+
+// LatestSessionID returns the session ID of the most recently updated session,
+// or an empty string if no sessions exist.
+func (s *Storage) LatestSessionID() (string, error) {
+	metas, err := s.ListSessions()
+	if err != nil {
+		return "", err
+	}
+	if len(metas) == 0 {
+		return "", nil
+	}
+	return metas[0].ID, nil
+}

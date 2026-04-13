@@ -112,6 +112,13 @@ type ClearHistoryMsg struct{}
 // CompactHistoryMsg signals the TUI to trigger context compaction.
 type CompactHistoryMsg struct{}
 
+// RestoreMsg carries restored session history messages to populate the TUI.
+type RestoreMsg struct {
+	Messages  []ChatMessage
+	SessionID string
+	Summary   string // compact summary text, if any
+}
+
 // ── Companion Bubbletea messages ─────────────────────────────────────────────
 
 // CompanionLoadMsg signals that a companion has been loaded/hatched.
@@ -330,6 +337,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 		m.status = "Error"
 		m.streaming = false
+		m.viewport.SetContent(m.renderMessages())
+		m.viewport.GotoBottom()
+
+	case RestoreMsg:
+		// Prepend restored history after any banner
+		var kept []ChatMessage
+		for _, m2 := range m.messages {
+			if m2.Role == "banner" {
+				kept = append(kept, m2)
+			}
+		}
+		if msg.Summary != "" {
+			kept = append(kept, ChatMessage{Role: "system", Content: "[Restored session — compacted summary available]"})
+		}
+		kept = append(kept, msg.Messages...)
+		kept = append(kept, ChatMessage{Role: "system", Content: "Session restored. You may continue the conversation."})
+		m.messages = kept
 		m.viewport.SetContent(m.renderMessages())
 		m.viewport.GotoBottom()
 	}
