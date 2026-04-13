@@ -31,6 +31,11 @@ type BootstrapConfig struct {
 	AppConfig *util.AppConfig
 	WorkDir   string
 	SessionID string
+	// MainThreadAgentType, if set, indicates the session is running as a
+	// specific agent type (e.g. "worker"). Coordinator prompt injection is
+	// skipped when this is set, aligned with TS systemPrompt.ts:65
+	// (!mainThreadAgentDefinition guard).
+	MainThreadAgentType string
 }
 
 // BootstrapResult holds the fully initialised components ready for use.
@@ -157,21 +162,33 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 	engineTools := allTools
 
 	// ── 6a. Coordinator mode: inject system prompt + filter tools ────────
-	if agent.IsCoordinatorMode() {
+	// Aligned with TS systemPrompt.ts:62-75 — coordinator prompt REPLACES the
+	// default prompt (not prepended). The coordinator has its own comprehensive
+	// instructions; mixing with the generic Claude Code prompt causes conflicts.
+	if agent.IsCoordinatorMode() && cfg.MainThreadAgentType == "" {
 		coordPrompt := agent.BuildCoordinatorSystemPrompt(agent.CoordinatorConfig{
 			MaxWorkers:        4,
 			MaxTurnsPerWorker: 100,
 			WorkDir:           workDir,
 			DefaultModel:      appCfg.Model,
 		}, nil)
-		sysPrompt.Text = coordPrompt + "\n\n" + sysPrompt.Text
-		slog.Info("coordinator mode: system prompt injected")
+		// Append coordinator user context (worker tools, MCP, scratchpad).
+		// Aligned with TS QueryEngine.ts:302-308 getCoordinatorUserContext().
+		coordCtx := agent.GetCoordinatorUserContext(nil, "")
+		if workerToolsCtx, ok := coordCtx["workerToolsContext"]; ok && workerToolsCtx != "" {
+			coordPrompt += "\n\n" + workerToolsCtx
+		}
+		sysPrompt.Text = coordPrompt
+		slog.Info("coordinator mode: system prompt replaced (not prepended)")
 
-		// Filter tools to coordinator whitelist (strict 4-tool set from toolfilter.go,
-		// aligned with TS COORDINATOR_MODE_ALLOWED_TOOLS).
+		// Filter tools to coordinator whitelist.
+		// When CLAUDE_CODE_SIMPLE is also set, combine simple tools + coordinator
+		// tools so the coordinator can do direct operations too.
+		// Aligned with TS tools.ts:287-297.
 		var filtered []engine.Tool
+		simpleCoordAllowed := agent.SimpleCoordinatorAllowedTools()
 		for _, t := range allTools {
-			if agent.CoordinatorModeAllowedTools[t.Name()] {
+			if simpleCoordAllowed[t.Name()] || agent.IsPrActivitySubscriptionTool(t.Name()) {
 				filtered = append(filtered, t)
 			}
 		}

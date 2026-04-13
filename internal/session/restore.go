@@ -36,6 +36,9 @@ type RestoreResult struct {
 	SessionAge time.Duration
 	// OriginalMessageCount is the total transcript entries (before compaction trim).
 	OriginalMessageCount int
+	// Mode is "coordinator" or "normal" — from the persisted session metadata.
+	// Aligned with TS sessionRestore.ts result.mode.
+	Mode string
 }
 
 // RestoreSession performs a full session restore, loading the transcript,
@@ -65,6 +68,7 @@ func (s *Storage) RestoreSession(sessionID string) (*RestoreResult, error) {
 		CostUSD:              meta.CostUSD,
 		OriginalMessageCount: len(entries),
 		SessionAge:           time.Since(meta.UpdatedAt),
+		Mode:                 meta.Mode,
 	}
 
 	// Find the last compact_summary boundary

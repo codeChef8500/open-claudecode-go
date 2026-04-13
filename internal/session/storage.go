@@ -173,3 +173,20 @@ func (s *Storage) LatestSessionID() (string, error) {
 	}
 	return metas[0].ID, nil
 }
+
+// SaveMode persists the coordinator/normal mode to the session's meta.json.
+// Aligned with TS sessionStorage.ts saveMode().
+func (s *Storage) SaveMode(sessionID, mode string) error {
+	meta, err := s.LoadMeta(sessionID)
+	if err != nil {
+		// If meta doesn't exist yet, create a minimal one.
+		meta = &SessionMetadata{
+			ID:        sessionID,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+		}
+	}
+	meta.Mode = mode
+	meta.UpdatedAt = time.Now()
+	return s.SaveMeta(meta)
+}

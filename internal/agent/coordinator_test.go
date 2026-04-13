@@ -229,6 +229,133 @@ func TestTaskNotificationXMLFailedStatus(t *testing.T) {
 	}
 }
 
+// TestSimpleCoordinatorAllowedToolsNormal verifies that without CLAUDE_CODE_SIMPLE,
+// SimpleCoordinatorAllowedTools returns only the 4 coordinator tools.
+func TestSimpleCoordinatorAllowedToolsNormal(t *testing.T) {
+	// Ensure CLAUDE_CODE_SIMPLE is not set.
+	t.Setenv("CLAUDE_CODE_SIMPLE", "")
+
+	allowed := SimpleCoordinatorAllowedTools()
+	if len(allowed) != 4 {
+		t.Fatalf("expected 4 tools (coordinator only), got %d: %v", len(allowed), allowed)
+	}
+	for name := range CoordinatorModeAllowedTools {
+		if !allowed[name] {
+			t.Errorf("missing coordinator tool %q", name)
+		}
+	}
+}
+
+// TestSimpleCoordinatorAllowedToolsSimpleMode verifies that with CLAUDE_CODE_SIMPLE,
+// the tool set is the union of simple tools + coordinator tools (7 total).
+func TestSimpleCoordinatorAllowedToolsSimpleMode(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_SIMPLE", "true")
+
+	allowed := SimpleCoordinatorAllowedTools()
+	expected := map[string]bool{
+		"Task": true, "TaskStop": true, "SendMessage": true, "SyntheticOutput": true,
+		"Bash": true, "Read": true, "FileEdit": true,
+	}
+	if len(allowed) != len(expected) {
+		t.Fatalf("expected %d tools, got %d: %v", len(expected), len(allowed), allowed)
+	}
+	for name := range expected {
+		if !allowed[name] {
+			t.Errorf("missing tool %q in simple+coordinator set", name)
+		}
+	}
+}
+
+// TestIsPrActivitySubscriptionTool verifies PR activity MCP tool detection.
+func TestIsPrActivitySubscriptionTool(t *testing.T) {
+	cases := []struct {
+		name   string
+		expect bool
+	}{
+		{"mcp__github__subscribe_pr_activity", true},
+		{"mcp__github__unsubscribe_pr_activity", true},
+		{"subscribe_pr_activity", true},
+		{"Bash", false},
+		{"Task", false},
+		{"mcp__github__pr_review", false},
+	}
+	for _, tc := range cases {
+		if got := IsPrActivitySubscriptionTool(tc.name); got != tc.expect {
+			t.Errorf("IsPrActivitySubscriptionTool(%q) = %v, want %v", tc.name, got, tc.expect)
+		}
+	}
+}
+
+// TestMatchSessionModeCoordinator verifies mode switching to coordinator.
+func TestMatchSessionModeCoordinator(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_COORDINATOR_MODE", "")
+
+	warning := MatchSessionMode(SessionModeCoordinator)
+	if warning == "" {
+		t.Error("expected warning when switching to coordinator mode")
+	}
+	if !IsCoordinatorMode() {
+		t.Error("IsCoordinatorMode() should be true after MatchSessionMode(coordinator)")
+	}
+
+	// Clean up.
+	t.Setenv("CLAUDE_CODE_COORDINATOR_MODE", "")
+}
+
+// TestMatchSessionModeNormal verifies mode switching to normal.
+func TestMatchSessionModeNormal(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_COORDINATOR_MODE", "1")
+
+	warning := MatchSessionMode(SessionModeNormal)
+	if warning == "" {
+		t.Error("expected warning when switching to normal mode")
+	}
+	if IsCoordinatorMode() {
+		t.Error("IsCoordinatorMode() should be false after MatchSessionMode(normal)")
+	}
+}
+
+// TestMatchSessionModeNoOp verifies no switch when mode matches.
+func TestMatchSessionModeNoOp(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_COORDINATOR_MODE", "")
+
+	warning := MatchSessionMode(SessionModeNormal)
+	if warning != "" {
+		t.Errorf("expected no warning for matching mode, got %q", warning)
+	}
+}
+
+// TestGetCoordinatorUserContextReturnsWorkerTools verifies that
+// GetCoordinatorUserContext returns non-empty worker tools context
+// when in coordinator mode.
+func TestGetCoordinatorUserContextReturnsWorkerTools(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_COORDINATOR_MODE", "1")
+	defer t.Setenv("CLAUDE_CODE_COORDINATOR_MODE", "")
+
+	ctx := GetCoordinatorUserContext(nil, "")
+	if ctx == nil {
+		t.Fatal("expected non-nil context in coordinator mode")
+	}
+	wt, ok := ctx["workerToolsContext"]
+	if !ok || wt == "" {
+		t.Error("expected non-empty workerToolsContext")
+	}
+	if !strings.Contains(wt, "Bash") {
+		t.Errorf("workerToolsContext should mention Bash, got: %s", wt)
+	}
+}
+
+// TestGetCoordinatorUserContextNilWhenNotCoordinator verifies that
+// GetCoordinatorUserContext returns nil when not in coordinator mode.
+func TestGetCoordinatorUserContextNilWhenNotCoordinator(t *testing.T) {
+	t.Setenv("CLAUDE_CODE_COORDINATOR_MODE", "")
+
+	ctx := GetCoordinatorUserContext(nil, "")
+	if ctx != nil {
+		t.Errorf("expected nil context when not in coordinator mode, got %v", ctx)
+	}
+}
+
 // TestFilterToolsForCoordinator verifies coordinator mode filtering.
 func TestFilterToolsForCoordinator(t *testing.T) {
 	allTools := []string{

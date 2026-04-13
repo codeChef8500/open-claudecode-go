@@ -81,6 +81,33 @@ func CoordinatorModeAllowedToolsList() []string {
 	return out
 }
 
+// SimpleCoordinatorAllowedTools returns the set of tool names the coordinator
+// is allowed to use. When CLAUDE_CODE_SIMPLE is active, the set is the union
+// of simple tools (Bash, Read, FileEdit) and coordinator tools (Task, TaskStop,
+// SendMessage, SyntheticOutput), aligned with TS tools.ts:287-297.
+// When simple mode is NOT active, only the coordinator whitelist is returned.
+func SimpleCoordinatorAllowedTools() map[string]bool {
+	result := make(map[string]bool, len(CoordinatorModeAllowedTools)+3)
+	for k, v := range CoordinatorModeAllowedTools {
+		result[k] = v
+	}
+	if isSimpleMode() {
+		// Simple + coordinator: coordinator gets direct tool access too.
+		result["Bash"] = true
+		result["Read"] = true
+		result["FileEdit"] = true
+	}
+	return result
+}
+
+// IsPrActivitySubscriptionTool returns true if the tool name matches the PR
+// activity subscription MCP tools. Aligned with TS toolPool.ts:
+// isPrActivitySubscriptionTool() which checks for these suffixed tool names.
+func IsPrActivitySubscriptionTool(name string) bool {
+	return strings.HasSuffix(name, "subscribe_pr_activity") ||
+		strings.HasSuffix(name, "unsubscribe_pr_activity")
+}
+
 // FilterToolsForAgent filters the available tools based on agent type and execution context.
 // This implements the layered filtering logic from agentToolUtils.ts filterToolsForAgent.
 //

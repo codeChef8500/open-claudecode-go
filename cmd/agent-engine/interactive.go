@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/wall-ai/agent-engine/internal/agent"
 	"github.com/wall-ai/agent-engine/internal/buddy"
 	"github.com/wall-ai/agent-engine/internal/engine"
 	"github.com/wall-ai/agent-engine/internal/session"
@@ -59,6 +60,14 @@ func runInteractiveMode(ctx context.Context, appCfg *util.AppConfig, wd string) 
 		bootstrapSessionID = restoredSessionID
 	}
 
+	// ── Match coordinator mode to restored session ─────────────────────
+	// Aligned with TS sessionRestore.ts:427-433 matchSessionMode().
+	if restoreResult != nil && restoreResult.Mode != "" {
+		if warning := agent.MatchSessionMode(agent.CoordinatorSessionMode(restoreResult.Mode)); warning != "" {
+			slog.Info("session restore: mode switch", slog.String("warning", warning))
+		}
+	}
+
 	result, err := session.Bootstrap(ctx, session.BootstrapConfig{
 		AppConfig: appCfg,
 		WorkDir:   wd,
@@ -68,6 +77,17 @@ func runInteractiveMode(ctx context.Context, appCfg *util.AppConfig, wd string) 
 		return fmt.Errorf("bootstrap: %w", err)
 	}
 	defer session.Shutdown(result)
+
+	// ── Persist current mode for session resume ─────────────────────────
+	// Aligned with TS main.tsx:3770-3772 saveMode().
+	store := session.NewStorage(session.DefaultStorageDir())
+	currentMode := "normal"
+	if agent.IsCoordinatorMode() {
+		currentMode = "coordinator"
+	}
+	if err := store.SaveMode(result.Engine.SessionID(), currentMode); err != nil {
+		slog.Warn("failed to persist session mode", slog.Any("err", err))
+	}
 
 	// Seed engine history from restored messages so the LLM has context.
 	if restoreResult != nil && len(restoreResult.Messages) > 0 {

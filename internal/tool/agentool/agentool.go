@@ -151,7 +151,7 @@ func (t *AgentTool) Prompt(uctx *tool.UseContext) string {
 	if t.cfg.Loader != nil {
 		agents := t.cfg.Loader.MergeAll()
 		filtered := t.cfg.Loader.FilterByMcpAvailability(agents)
-		return agent.BuildAgentToolPrompt(filtered, false)
+		return agent.BuildAgentToolPrompt(filtered, t.cfg.IsCoordinatorMode)
 	}
 
 	// Legacy static prompt.

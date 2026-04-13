@@ -16,6 +16,10 @@ type SessionMetadata struct {
 	Model       string    `json:"model,omitempty"`
 	ForkOf      string    `json:"fork_of,omitempty"`
 	ForkLabel   string    `json:"fork_label,omitempty"`
+	// Mode is "coordinator" or "normal" — persisted so session resume
+	// can restore the coordinator mode env var.
+	// Aligned with TS sessionStorage.ts saveMode().
+	Mode string `json:"mode,omitempty"`
 }
 
 // TranscriptEntryType classifies each record in a JSONL transcript.

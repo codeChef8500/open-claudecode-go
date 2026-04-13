@@ -116,6 +116,72 @@ func TestStorage_ListSessions(t *testing.T) {
 	}
 }
 
+// TestStorage_SaveMode verifies that SaveMode persists coordinator/normal mode
+// and it can be loaded back via LoadMeta (GAP-3 regression test).
+func TestStorage_SaveMode(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStorage(dir)
+	sid := "mode-test"
+
+	// Save initial metadata so the session directory exists.
+	if err := store.SaveMeta(&SessionMetadata{
+		ID:        sid,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("SaveMeta: %v", err)
+	}
+
+	// Persist coordinator mode.
+	if err := store.SaveMode(sid, "coordinator"); err != nil {
+		t.Fatalf("SaveMode: %v", err)
+	}
+
+	loaded, err := store.LoadMeta(sid)
+	if err != nil {
+		t.Fatalf("LoadMeta: %v", err)
+	}
+	if loaded.Mode != "coordinator" {
+		t.Errorf("expected mode 'coordinator', got %q", loaded.Mode)
+	}
+
+	// Switch to normal.
+	if err := store.SaveMode(sid, "normal"); err != nil {
+		t.Fatalf("SaveMode normal: %v", err)
+	}
+
+	loaded, err = store.LoadMeta(sid)
+	if err != nil {
+		t.Fatalf("LoadMeta 2: %v", err)
+	}
+	if loaded.Mode != "normal" {
+		t.Errorf("expected mode 'normal', got %q", loaded.Mode)
+	}
+}
+
+// TestStorage_SaveMode_NoExistingMeta verifies SaveMode works even when
+// no meta.json exists yet (creates a minimal one).
+func TestStorage_SaveMode_NoExistingMeta(t *testing.T) {
+	dir := t.TempDir()
+	store := NewStorage(dir)
+	sid := "mode-no-meta"
+
+	if err := store.SaveMode(sid, "coordinator"); err != nil {
+		t.Fatalf("SaveMode: %v", err)
+	}
+
+	loaded, err := store.LoadMeta(sid)
+	if err != nil {
+		t.Fatalf("LoadMeta: %v", err)
+	}
+	if loaded.Mode != "coordinator" {
+		t.Errorf("expected mode 'coordinator', got %q", loaded.Mode)
+	}
+	if loaded.ID != sid {
+		t.Errorf("expected ID %q, got %q", sid, loaded.ID)
+	}
+}
+
 func TestStorage_MultipleEntries(t *testing.T) {
 	dir := t.TempDir()
 	store := NewStorage(dir)
