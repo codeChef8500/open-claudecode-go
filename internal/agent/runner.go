@@ -454,6 +454,14 @@ func (r *AgentRunner) executeLoop(
 		turnCount++
 		progressTracker.IncrementTurn()
 
+		// Inject queued follow-up messages from the task framework.
+		if turnCount > 1 && r.taskFramework != nil {
+			pending := r.taskFramework.DrainPendingMessages(def.AgentID)
+			if len(pending) > 0 {
+				params.Text = strings.Join(pending, "\n\n")
+			}
+		}
+
 		// Inject pending notifications into the task text for subsequent turns.
 		if turnCount > 1 && notifQueue != nil {
 			notifs := notifQueue.DrainAll()
@@ -538,7 +546,6 @@ func (r *AgentRunner) executeLoop(
 		// and re-submits. The outer loop only needs to handle explicit
 		// continuation scenarios. Since the engine's query loop is self-contained
 		// with multi-turn tool execution, we break after EventDone.
-		break
 	}
 
 	if result.Status == AgentStatusRunning {

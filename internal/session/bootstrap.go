@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/wall-ai/agent-engine/internal/agent"
+	agentswarm "github.com/wall-ai/agent-engine/internal/agent/swarm"
 	"github.com/wall-ai/agent-engine/internal/analytics"
 	"github.com/wall-ai/agent-engine/internal/command"
 	"github.com/wall-ai/agent-engine/internal/engine"
@@ -19,9 +20,12 @@ import (
 	"github.com/wall-ai/agent-engine/internal/prompt"
 	"github.com/wall-ai/agent-engine/internal/provider"
 	"github.com/wall-ai/agent-engine/internal/skill"
+	"github.com/wall-ai/agent-engine/internal/state"
 	"github.com/wall-ai/agent-engine/internal/tool/agentool"
 	"github.com/wall-ai/agent-engine/internal/tool/listpeers"
 	"github.com/wall-ai/agent-engine/internal/tool/sendmessage"
+	"github.com/wall-ai/agent-engine/internal/tool/teamcreate"
+	"github.com/wall-ai/agent-engine/internal/tool/teamdelete"
 	"github.com/wall-ai/agent-engine/internal/toolset"
 	"github.com/wall-ai/agent-engine/internal/util"
 )
@@ -200,15 +204,40 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 	// NOTE: AgentRunner receives the FULL tool set so that worker agents
 	// spawned by the coordinator can access all tools (WebSearch, WebFetch,
 	// Bash, FileEdit, etc.). The coordinator's own Engine uses engineTools.
+	taskFramework := agent.NewTaskFramework()
+	taskManager := agent.NewTaskManager()
+	worktreeManager := agent.NewWorktreeManager(filepath.Join(workDir, ".worktrees"))
 	agentRunner := agent.NewAgentRunner(agent.AgentRunnerConfig{
-		Caller:   prov,
-		AllTools: allTools,
+		Caller:          prov,
+		TaskFramework:   taskFramework,
+		TaskManager:     taskManager,
+		WorktreeManager: worktreeManager,
+		AllTools:        allTools,
 	})
 	result.AgentRunner = agentRunner
 
 	// Create AsyncLifecycleManager for background agent execution.
 	asyncMgr := agent.NewAsyncLifecycleManager(agentRunner)
 	result.AsyncManager = asyncMgr
+
+	mailboxRegistry := agent.NewMailboxRegistry(256, 0)
+	messageBus := agent.NewMessageBus()
+	teamManager := agent.NewTeamManager(workDir, mailboxRegistry, messageBus)
+	appState := state.New(workDir)
+	swarmMgr := agentswarm.NewSwarmManager(agentswarm.SwarmManagerConfig{
+		BaseDir:     workDir,
+		TeamManager: teamManager,
+		AppState:    appState,
+		RunAgent: func(runCtx context.Context, prompt string) (string, error) {
+			return agentRunner.RunAgentSync(runCtx, agent.RunAgentParams{
+				Task:       prompt,
+				WorkDir:    workDir,
+				Background: false,
+			})
+		},
+	})
+	teamCreator := &agentswarm.TeamManagerCreatorAdapter{TM: teamManager}
+	teamDeleter := &agentswarm.TeamManagerDeleterAdapter{TM: teamManager}
 
 	// Wire global notification queue for task-notification injection.
 	globalNotifQueue := agent.NewNotificationQueue(100)
@@ -236,6 +265,8 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 	agentCfg := agentool.AgentToolConfig{
 		Runner:            agentRunner,
 		AsyncManager:      asyncMgr,
+		TeamManager:       teamManager,
+		SwarmManager:      swarmMgr,
 		IsCoordinatorMode: agent.IsCoordinatorMode(),
 		RegisterAgentName: registerName,
 	}
@@ -247,7 +278,11 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 		case "list_peers":
 			engineTools[i] = listpeers.NewWithManager(asyncMgr)
 		case "SendMessage":
-			engineTools[i] = sendmessage.NewWithAllDeps(nil, asyncMgr, resolveName)
+			engineTools[i] = sendmessage.NewWithAllDeps(&agentswarm.MailboxSenderAdapter{SM: swarmMgr}, asyncMgr, resolveName)
+		case "team_create":
+			engineTools[i] = teamcreate.NewWithCreator(teamCreator)
+		case "team_delete":
+			engineTools[i] = teamdelete.NewWithDeleter(teamDeleter)
 		}
 	}
 	// Also wire into allTools so workers get the fully-configured implementations.
@@ -258,7 +293,11 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 		case "list_peers":
 			allTools[i] = listpeers.NewWithManager(asyncMgr)
 		case "SendMessage":
-			allTools[i] = sendmessage.NewWithAllDeps(nil, asyncMgr, resolveName)
+			allTools[i] = sendmessage.NewWithAllDeps(&agentswarm.MailboxSenderAdapter{SM: swarmMgr}, asyncMgr, resolveName)
+		case "team_create":
+			allTools[i] = teamcreate.NewWithCreator(teamCreator)
+		case "team_delete":
+			allTools[i] = teamdelete.NewWithDeleter(teamDeleter)
 		}
 	}
 
@@ -277,6 +316,7 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 		PermissionMode:     appCfg.PermissionMode,
 		CustomSystemPrompt: sysPrompt.Text,
 		Verbose:            appCfg.VerboseMode,
+		StopTask:           asyncMgr.Cancel,
 	}, prov, engineTools)
 	if err != nil {
 		return nil, fmt.Errorf("create engine: %w", err)

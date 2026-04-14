@@ -363,6 +363,10 @@ type EngineConfig struct {
 
 	// AdditionalWorkingDirs are extra directories the session may access.
 	AdditionalWorkingDirs []string `json:"additional_working_dirs,omitempty"`
+
+	// StopTask, if non-nil, stops a background task or async agent by ID.
+	// This is injected into tool execution context for TaskStop.
+	StopTask func(taskID string) error `json:"-"`
 }
 
 // QuerySource describes the origin of a query (for compaction skip decisions).

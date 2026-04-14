@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wall-ai/agent-engine/internal/agent"
+	agentswarm "github.com/wall-ai/agent-engine/internal/agent/swarm"
 	"github.com/wall-ai/agent-engine/internal/engine"
 	"github.com/wall-ai/agent-engine/internal/tool"
 )
@@ -58,6 +59,8 @@ type AgentToolConfig struct {
 	Loader *agent.AgentLoader
 	// TeamManager manages team state and membership.
 	TeamManager *agent.TeamManager
+	// SwarmManager manages teammate spawning and mailbox routing.
+	SwarmManager *agentswarm.SwarmManager
 	// LegacyRunner is the old callback — used as fallback when Runner is nil.
 	LegacyRunner SubAgentRunner
 	// ParentContext is the subagent context from the parent agent.
@@ -405,11 +408,24 @@ func (t *AgentTool) handleAsyncPath(ctx context.Context, agentID string, in Inpu
 				slog.String("name", in.Name),
 				slog.String("agent_id", launchedID))
 		}
-
-		ch <- &engine.ContentBlock{
-			Type: engine.ContentTypeText,
-			Text: fmt.Sprintf("Started background agent %s. Task: %s", launchedID, in.Description),
+		result := map[string]interface{}{
+			"status":      "background_started",
+			"task_id":     launchedID,
+			"description": in.Description,
+			"task":        in.Task,
+			"cwd":         uctx.WorkDir,
 		}
+		if in.Isolation != "" {
+			result["isolation"] = in.Isolation
+		}
+		if in.Name != "" {
+			result["name"] = in.Name
+		}
+		if teamName := t.resolveTeamName(in); teamName != "" {
+			result["team_name"] = teamName
+		}
+		payload, _ := json.Marshal(result)
+		ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: string(payload)}
 		return
 	}
 
@@ -418,10 +434,14 @@ func (t *AgentTool) handleAsyncPath(ctx context.Context, agentID string, in Inpu
 		go func() {
 			_, _ = t.runSubAgent(ctx, agentID, in.Task, in, uctx)
 		}()
-		ch <- &engine.ContentBlock{
-			Type: engine.ContentTypeText,
-			Text: fmt.Sprintf("Started background agent %s. Task: %s", agentID, in.Description),
-		}
+		payload, _ := json.Marshal(map[string]interface{}{
+			"status":      "background_started",
+			"task_id":     agentID,
+			"description": in.Description,
+			"task":        in.Task,
+			"cwd":         uctx.WorkDir,
+		})
+		ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: string(payload)}
 		return
 	}
 
@@ -497,6 +517,38 @@ func (t *AgentTool) handleTeammateSpawn(ctx context.Context, agentID string, in 
 
 	if in.Mode == "plan" {
 		params.PermissionMode = "plan"
+	}
+
+	if t.cfg.SwarmManager != nil {
+		spawnCfg := agentswarm.TeammateSpawnConfig{
+			Identity: agentswarm.TeammateIdentity{
+				AgentID:          agentID,
+				AgentName:        in.Name,
+				TeamName:         teamName,
+				PlanModeRequired: in.Mode == "plan",
+			},
+			Prompt:         in.Task,
+			Description:    in.Description,
+			Model:          in.Model,
+			AgentType:      in.SubagentType,
+			WorkDir:        uctx.WorkDir,
+			AllowedTools:   in.AllowedTools,
+			SystemPrompt:   in.SystemPrompt,
+			PermissionMode: params.PermissionMode,
+		}
+		output, err := t.cfg.SwarmManager.SpawnTeammate(ctx, spawnCfg)
+		if err != nil {
+			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: err.Error(), IsError: true}
+			return
+		}
+		if in.Name != "" && t.cfg.RegisterAgentName != nil {
+			t.cfg.RegisterAgentName(in.Name, output.AgentID)
+		}
+		ch <- &engine.ContentBlock{
+			Type: engine.ContentTypeText,
+			Text: fmt.Sprintf("Teammate '%s' spawned in team '%s' (id: %s, backend: %s). Task: %s", in.Name, teamName, output.AgentID, output.BackendType, in.Description),
+		}
+		return
 	}
 
 	// Launch via async manager if available.

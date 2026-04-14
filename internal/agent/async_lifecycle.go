@@ -143,12 +143,23 @@ func (m *AsyncLifecycleManager) runAsync(ctx context.Context, agent *AsyncAgent,
 	switch {
 	case ctx.Err() != nil:
 		agent.Status = AsyncStatusCancelled
+		if m.runner != nil && m.runner.taskManager != nil {
+			_ = m.runner.taskManager.MarkCancelled(agent.AgentID)
+		}
 	case result.Error != nil:
 		agent.Status = AsyncStatusFailed
 	default:
 		agent.Status = AsyncStatusDone
 	}
 	agent.mu.Unlock()
+
+	if m.runner != nil && m.runner.taskFramework != nil {
+		if !m.runner.taskFramework.MarkNotified(agent.AgentID) {
+			slog.Info("async lifecycle: skipping duplicate terminal notification",
+				slog.String("agent_id", agent.AgentID))
+			return
+		}
+	}
 
 	// Push completion notification to agent's own queue.
 	// Populate extended fields for TS-aligned task-notification XML.
@@ -259,6 +270,18 @@ func (m *AsyncLifecycleManager) PushNotification(agentID string, n Notification)
 	}
 
 	agent.notifications.Push(n)
+}
+
+// QueuePendingMessage enqueues a follow-up message for a running/stopped agent.
+// Returns false if the agent or task framework is unavailable.
+func (m *AsyncLifecycleManager) QueuePendingMessage(agentID, message string) bool {
+	if m == nil || m.runner == nil || m.runner.taskFramework == nil {
+		return false
+	}
+	if err := m.runner.taskFramework.QueuePendingMessage(agentID, message); err != nil {
+		return false
+	}
+	return true
 }
 
 // DrainNotifications returns and clears pending notifications for an agent.

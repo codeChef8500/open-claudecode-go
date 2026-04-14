@@ -45,6 +45,8 @@ type ToolUseContext struct {
 	AddNotification func(text string)
 	// AppendSystemMessage injects a system message into the conversation.
 	AppendSystemMessage func(text string)
+	// StopTask stops a background task or async agent by ID.
+	StopTask func(taskID string) error
 
 	// HandleElicitation is called when the model requests user input mid-turn.
 	HandleElicitation func(ctx context.Context, toolUseID string, question string) (string, error)
@@ -137,5 +139,6 @@ func NewToolUseContext(
 		ContentReplacementState: NewContentReplacementState(0),
 		AddNotification:         func(string) {}, // wired by SDK layer
 		AppendSystemMessage:     func(string) {}, // wired by SDK layer
+		StopTask:                func(string) error { return nil },
 	}
 }

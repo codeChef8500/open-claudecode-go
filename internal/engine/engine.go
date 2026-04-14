@@ -292,6 +292,7 @@ func (e *Engine) useContext() *UseContext {
 		PermissionMode: e.cfg.PermissionMode,
 		AskPermission:  e.askPermission,
 		RequestPrompt:  e.requestPrompt,
+		StopTask:       e.cfg.StopTask,
 		GetAppState: func() interface{} {
 			v := e.store.Get("app_state")
 			if v != nil {

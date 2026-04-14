@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/wall-ai/agent-engine/internal/agent"
+	agentswarm "github.com/wall-ai/agent-engine/internal/agent/swarm"
 	"github.com/wall-ai/agent-engine/internal/engine"
 	"github.com/wall-ai/agent-engine/internal/tool"
 )
@@ -22,6 +24,8 @@ type Input struct {
 	MessageType string `json:"message_type,omitempty"`
 	// Priority: "normal", "high", "low".
 	Priority string `json:"priority,omitempty"`
+	// Approved is used by structured approval messages.
+	Approved *bool `json:"approved,omitempty"`
 }
 
 // MailboxSender abstracts mailbox delivery so we don't import agent directly.
@@ -32,6 +36,10 @@ type MailboxSender interface {
 	Broadcast(from, teamName, text string) error
 	// TeamMembers returns agent IDs in a team (for broadcast).
 	TeamMembers(teamName string) []string
+}
+
+type structuredMailboxSender interface {
+	SendEnvelope(from, to string, env *agentswarm.MailboxEnvelope) error
 }
 
 // SendMessageTool sends messages between agents.
@@ -147,7 +155,7 @@ func (t *SendMessageTool) Call(_ context.Context, input json.RawMessage, uctx *t
 		switch {
 		case in.To == "*":
 			// Broadcast to team.
-			resultText := t.handleBroadcast(fromAgent, uctx.AgentType, msgContent)
+			resultText := t.handleBroadcast(fromAgent, uctx.TeammateID, uctx.AgentType, msgContent)
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: resultText}
 
 		case in.To == "" || in.To == "parent":
@@ -176,6 +184,10 @@ func (t *SendMessageTool) Call(_ context.Context, input json.RawMessage, uctx *t
 					return
 				}
 			}
+			if resultText, ok := t.handleStructuredSend(fromAgent, targetID, in); ok {
+				ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: resultText}
+				return
+			}
 			// Fall back to mailbox.
 			resultText := t.handleDirectSend(fromAgent, in.To, msgContent, in.Priority)
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: resultText}
@@ -185,14 +197,22 @@ func (t *SendMessageTool) Call(_ context.Context, input json.RawMessage, uctx *t
 }
 
 // handleBroadcast sends a message to all team members.
-func (t *SendMessageTool) handleBroadcast(from, teamName, message string) string {
+func (t *SendMessageTool) handleBroadcast(from, teammateID, teamName, message string) string {
+	if teamName == "" && teammateID != "" {
+		if idx := strings.LastIndex(teammateID, "@"); idx >= 0 && idx+1 < len(teammateID) {
+			teamName = teammateID[idx+1:]
+		}
+	}
+	if teamName == "" {
+		return "Broadcast failed: no team context available."
+	}
 	if t.sender != nil {
 		err := t.sender.Broadcast(from, teamName, message)
 		if err != nil {
 			slog.Warn("sendmessage: broadcast failed", slog.Any("err", err))
 			return fmt.Sprintf("Broadcast failed: %v", err)
 		}
-		return "Message broadcast to team."
+		return fmt.Sprintf("Message broadcast to team %s.", teamName)
 	}
 	return "Broadcast not available (no mailbox configured)."
 }
@@ -212,6 +232,43 @@ func (t *SendMessageTool) handleDirectSend(from, to, message, priority string) s
 	return fmt.Sprintf("Message to %s queued (no mailbox configured).", to)
 }
 
+func (t *SendMessageTool) handleStructuredSend(from, to string, in Input) (string, bool) {
+	if in.MessageType == "" || in.MessageType == "text" {
+		return "", false
+	}
+	structuredSender, ok := t.sender.(structuredMailboxSender)
+	if !ok {
+		return "", false
+	}
+
+	var (
+		env *agentswarm.MailboxEnvelope
+		err error
+	)
+	switch in.MessageType {
+	case "shutdown_request":
+		env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypeShutdownRequest, agentswarm.ShutdownRequestPayload{Reason: in.Message})
+	case "shutdown_response":
+		if in.Approved != nil && !*in.Approved {
+			env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypeShutdownRejected, agentswarm.ShutdownRejectedPayload{Reason: in.Message})
+		} else {
+			env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypeShutdownApproved, agentswarm.ShutdownApprovedPayload{Summary: in.Message})
+		}
+	case "plan_approval_response":
+		approved := in.Approved == nil || *in.Approved
+		env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypePlanApprovalResponse, agentswarm.PlanApprovalResponsePayload{Approved: approved, Feedback: in.Message})
+	default:
+		return "", false
+	}
+	if err != nil {
+		return fmt.Sprintf("Structured send failed: %v", err), true
+	}
+	if err := structuredSender.SendEnvelope(from, to, env); err != nil {
+		return fmt.Sprintf("Structured send failed: %v", err), true
+	}
+	return fmt.Sprintf("Structured message sent to %s.", to), true
+}
+
 // tryRouteToAsyncAgent attempts to deliver a message to an in-process async agent.
 // For running agents: pushes to notification queue.
 // For stopped agents: auto-resumes in background (aligned with TS:822-844).
@@ -229,6 +286,11 @@ func (t *SendMessageTool) tryRouteToAsyncAgent(to, message string) bool {
 
 	// Running/pending → push message to notification queue.
 	if status == agent.AsyncStatusRunning || status == agent.AsyncStatusPending {
+		if t.asyncMgr.QueuePendingMessage(to, message) {
+			slog.Info("sendmessage: queued pending message for async agent",
+				slog.String("to", to))
+			return true
+		}
 		t.asyncMgr.PushNotification(to, agent.Notification{
 			Type:    agent.NotificationTypeMessage,
 			AgentID: to,
@@ -260,12 +322,20 @@ func (t *SendMessageTool) tryRouteToAsyncAgent(to, message string) bool {
 func (t *SendMessageTool) formatMessage(in Input) string {
 	switch in.MessageType {
 	case "shutdown_request":
-		return "__shutdown__"
+		return `{"type":"shutdown_request"}`
 	case "shutdown_response":
-		return fmt.Sprintf("__shutdown_ack__:%s", in.Message)
+		decision := "approved"
+		if in.Approved != nil && !*in.Approved {
+			decision = "rejected"
+		}
+		return fmt.Sprintf(`{"type":"shutdown_response","decision":%q,"message":%q}`, decision, in.Message)
 	case "plan_approval_response":
-		return fmt.Sprintf("__plan_approval__:%s", in.Message)
+		approved := in.Approved == nil || *in.Approved
+		return fmt.Sprintf(`{"type":"plan_approval_response","approved":%t,"message":%q}`, approved, in.Message)
 	default:
+		if strings.TrimSpace(in.Message) == "" {
+			return `{"type":"text","message":""}`
+		}
 		return in.Message
 	}
 }

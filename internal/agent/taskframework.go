@@ -39,6 +39,16 @@ type FrameworkTask struct {
 	CumulativeOutputTokens int
 	// RecentActivity holds the latest N tool activity descriptions.
 	RecentActivity []string
+	// Description stores task details for task management tools.
+	Description string
+	// Priority stores task priority (high/medium/low).
+	Priority string
+	// CreatedAt is when the task was created in the task registry.
+	CreatedAt time.Time
+	// PendingMessages queues follow-up messages for background tasks.
+	PendingMessages []string
+	// Notified prevents duplicate terminal notifications.
+	Notified bool
 }
 
 // NewTaskFramework creates an empty TaskFramework.
@@ -65,6 +75,14 @@ func (f *TaskFramework) Register(def AgentDefinition) *FrameworkTask {
 		task.Retain = prev.Retain
 		task.UIMessages = prev.UIMessages
 		task.AgentTask.StartedAt = prev.AgentTask.StartedAt
+		task.Description = prev.Description
+		task.Priority = prev.Priority
+		task.CreatedAt = prev.CreatedAt
+		task.PendingMessages = prev.PendingMessages
+		task.Notified = prev.Notified
+	}
+	if task.CreatedAt.IsZero() {
+		task.CreatedAt = time.Now()
 	}
 
 	f.tasks[def.AgentID] = task
@@ -176,6 +194,61 @@ func appendCapped(s []string, item string, maxLen int) []string {
 	return s
 }
 
+func taskStatusString(status AgentStatus) string {
+	switch status {
+	case AgentStatusPending:
+		return "pending"
+	case AgentStatusRunning:
+		return "in_progress"
+	case AgentStatusDone:
+		return "completed"
+	case AgentStatusCancelled:
+		return "cancelled"
+	case AgentStatusFailed:
+		return "failed"
+	default:
+		return string(status)
+	}
+}
+
+// QueuePendingMessage appends a message for later delivery to a background task.
+func (f *TaskFramework) QueuePendingMessage(agentID, msg string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tasks[agentID]
+	if !ok {
+		return fmt.Errorf("taskframework: task %q not found", agentID)
+	}
+	t.PendingMessages = append(t.PendingMessages, msg)
+	return nil
+}
+
+// DrainPendingMessages drains queued messages for a background task.
+func (f *TaskFramework) DrainPendingMessages(agentID string) []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tasks[agentID]
+	if !ok || len(t.PendingMessages) == 0 {
+		return nil
+	}
+	drained := append([]string(nil), t.PendingMessages...)
+	t.PendingMessages = nil
+	return drained
+}
+
+// MarkNotified marks a task as having emitted its terminal notification.
+// Returns true only on the first transition to notified.
+func (f *TaskFramework) MarkNotified(agentID string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.tasks[agentID]
+	if !ok || t.Notified {
+		return false
+	}
+	t.Notified = true
+	return true
+}
+
 // ── engine.TaskRegistry adapter ───────────────────────────────────────────────
 // TaskFramework implements engine.TaskRegistry so the task tools can use it
 // through UseContext.TaskRegistry without an import cycle.
@@ -187,10 +260,15 @@ func (f *TaskFramework) Create(id, title, description, priority string) {
 	}
 	t := f.Register(def)
 	f.mu.Lock()
-	_ = t
-	f.mu.Unlock()
-	_ = description
-	_ = priority
+	defer f.mu.Unlock()
+	t.Description = description
+	if priority == "" {
+		priority = "medium"
+	}
+	t.Priority = priority
+	if t.CreatedAt.IsZero() {
+		t.CreatedAt = time.Now()
+	}
 }
 
 func (f *TaskFramework) Update(id string, fields map[string]interface{}) error {
@@ -218,6 +296,12 @@ func (f *TaskFramework) Update(id string, fields map[string]interface{}) error {
 	if title, ok := fields["title"].(string); ok {
 		t.Definition.Task = title
 	}
+	if description, ok := fields["description"].(string); ok {
+		t.Description = description
+	}
+	if priority, ok := fields["priority"].(string); ok && priority != "" {
+		t.Priority = priority
+	}
 	return nil
 }
 
@@ -231,8 +315,10 @@ func (f *TaskFramework) Get(id string) (map[string]interface{}, bool) {
 	return map[string]interface{}{
 		"id":                       t.Definition.AgentID,
 		"title":                    t.Definition.Task,
-		"status":                   string(t.Status),
-		"created_at":               t.StartedAt.Format(time.RFC3339),
+		"description":              t.Description,
+		"priority":                 t.Priority,
+		"status":                   taskStatusString(t.Status),
+		"created_at":               t.CreatedAt.Format(time.RFC3339),
 		"latest_input_tokens":      t.LatestInputTokens,
 		"cumulative_output_tokens": t.CumulativeOutputTokens,
 	}, true
@@ -244,9 +330,12 @@ func (f *TaskFramework) List() []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(f.tasks))
 	for _, t := range f.tasks {
 		out = append(out, map[string]interface{}{
-			"id":     t.Definition.AgentID,
-			"title":  t.Definition.Task,
-			"status": string(t.Status),
+			"id":          t.Definition.AgentID,
+			"title":       t.Definition.Task,
+			"description": t.Description,
+			"priority":    t.Priority,
+			"status":      taskStatusString(t.Status),
+			"created_at":  t.CreatedAt.Format(time.RFC3339),
 		})
 	}
 	return out

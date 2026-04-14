@@ -160,6 +160,7 @@ type UseContext struct {
 	SendNotification    func(msg string)
 	AppendSystemMessage func(msg *Message)
 	SetToolJSX          func(toolUseID string, jsx interface{})
+	StopTask            func(taskID string) error
 
 	// ── Progress reporting ──────────────────────────────────────────
 	// OnToolProgress, if non-nil, is called by tools to emit incremental
