@@ -12,6 +12,8 @@ type BackendType string
 const (
 	BackendInProcess BackendType = "in-process"
 	BackendTmux      BackendType = "tmux"
+	BackendUDS       BackendType = "uds"
+	BackendBridge    BackendType = "bridge"
 )
 
 // ── TeammateIdentity ─────────────────────────────────────────────────────────
@@ -32,11 +34,11 @@ type TeammateIdentity struct {
 // TeammateSpawnConfig is the input for spawning a new teammate.
 type TeammateSpawnConfig struct {
 	Identity          TeammateIdentity `json:"identity"`
-	Prompt            string           `json:"prompt"`             // initial task prompt
-	Description       string           `json:"description"`        // short human-readable summary
-	Model             string           `json:"model,omitempty"`    // LLM model override
-	AgentType         string           `json:"agent_type"`         // agent definition type
-	WorkDir           string           `json:"work_dir"`           // working directory
+	Prompt            string           `json:"prompt"`          // initial task prompt
+	Description       string           `json:"description"`     // short human-readable summary
+	Model             string           `json:"model,omitempty"` // LLM model override
+	AgentType         string           `json:"agent_type"`      // agent definition type
+	WorkDir           string           `json:"work_dir"`        // working directory
 	AllowedTools      []string         `json:"allowed_tools,omitempty"`
 	SystemPrompt      string           `json:"system_prompt,omitempty"`
 	InvokingRequestID string           `json:"invoking_request_id,omitempty"` // parent tool_use ID

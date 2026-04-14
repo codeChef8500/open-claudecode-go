@@ -98,6 +98,8 @@ type App struct {
 	// Swarm / team panel
 	teamView  *teamview.TeamViewModel
 	swarmMode bool // true when a team is active
+	// teammatePermissionResponseCh bridges teammate permission prompts back to the swarm leader bridge.
+	teammatePermissionResponseCh chan<- bool
 
 	// SubmitFn is called when the user sends a message.
 	SubmitFn func(text string)
@@ -636,7 +638,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.viewport.GotoBottom()
 
 	case PermissionAnswerMsg:
-		// Answered — engine handles this via callback.
+		if a.teammatePermissionResponseCh != nil {
+			select {
+			case a.teammatePermissionResponseCh <- msg.Granted:
+			default:
+			}
+			a.teammatePermissionResponseCh = nil
+		}
 
 	case CostUpdateMsg:
 		a.costUSD = msg.CostUSD
@@ -707,9 +715,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Role:    "system",
 			Content: teamview.RenderPermissionBadge(msg.WorkerName, msg.WorkerColor, msg.ToolName, msg.Description),
 		})
+		a.permission.Ask(msg.ToolName, msg.Description)
+		a.teammatePermissionResponseCh = msg.ResponseCh
 		a.refreshViewport()
 		a.viewport.GotoBottom()
-		// The permission bridge handles the actual response via ResponseCh.
 
 	// ── AskUserQuestion events ───────────────────────────────────────────
 	case AskQuestionRequestMsg:

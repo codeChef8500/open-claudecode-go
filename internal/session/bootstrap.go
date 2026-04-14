@@ -56,6 +56,10 @@ type BootstrapResult struct {
 	SystemPrompt      *prompt.BuiltSystemPrompt
 	AgentRunner       *agent.AgentRunner
 	AsyncManager      *agent.AsyncLifecycleManager
+	ResumeManager     *agent.ResumeManager
+	SwarmManager      *agentswarm.SwarmManager
+	SendMessageTools  []*sendmessage.SendMessageTool
+	PermBridge        *agentswarm.LeaderPermissionBridge
 	NotificationQueue *agent.NotificationQueue
 }
 
@@ -219,6 +223,8 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 	// Create AsyncLifecycleManager for background agent execution.
 	asyncMgr := agent.NewAsyncLifecycleManager(agentRunner)
 	result.AsyncManager = asyncMgr
+	resumeMgr := agent.NewResumeManager(workDir)
+	result.ResumeManager = resumeMgr
 
 	mailboxRegistry := agent.NewMailboxRegistry(256, 0)
 	messageBus := agent.NewMessageBus()
@@ -236,6 +242,8 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 			})
 		},
 	})
+	result.SwarmManager = swarmMgr
+	result.PermBridge = swarmMgr.PermBridge
 	teamCreator := &agentswarm.TeamManagerCreatorAdapter{TM: teamManager}
 	teamDeleter := &agentswarm.TeamManagerDeleterAdapter{TM: teamManager}
 
@@ -265,6 +273,7 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 	agentCfg := agentool.AgentToolConfig{
 		Runner:            agentRunner,
 		AsyncManager:      asyncMgr,
+		ResumeManager:     resumeMgr,
 		TeamManager:       teamManager,
 		SwarmManager:      swarmMgr,
 		IsCoordinatorMode: agent.IsCoordinatorMode(),
@@ -278,7 +287,9 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 		case "list_peers":
 			engineTools[i] = listpeers.NewWithManager(asyncMgr)
 		case "SendMessage":
-			engineTools[i] = sendmessage.NewWithAllDeps(&agentswarm.MailboxSenderAdapter{SM: swarmMgr}, asyncMgr, resolveName)
+			smTool := sendmessage.NewWithAllDeps(&agentswarm.MailboxSenderAdapter{SM: swarmMgr}, asyncMgr, resolveName)
+			engineTools[i] = smTool
+			result.SendMessageTools = append(result.SendMessageTools, smTool)
 		case "team_create":
 			engineTools[i] = teamcreate.NewWithCreator(teamCreator)
 		case "team_delete":
@@ -293,7 +304,9 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 		case "list_peers":
 			allTools[i] = listpeers.NewWithManager(asyncMgr)
 		case "SendMessage":
-			allTools[i] = sendmessage.NewWithAllDeps(&agentswarm.MailboxSenderAdapter{SM: swarmMgr}, asyncMgr, resolveName)
+			smTool := sendmessage.NewWithAllDeps(&agentswarm.MailboxSenderAdapter{SM: swarmMgr}, asyncMgr, resolveName)
+			allTools[i] = smTool
+			result.SendMessageTools = append(result.SendMessageTools, smTool)
 		case "team_create":
 			allTools[i] = teamcreate.NewWithCreator(teamCreator)
 		case "team_delete":
@@ -372,6 +385,9 @@ func Bootstrap(ctx context.Context, cfg BootstrapConfig) (*BootstrapResult, erro
 func Shutdown(result *BootstrapResult) {
 	if result == nil {
 		return
+	}
+	if result.SwarmManager != nil {
+		result.SwarmManager.ShutdownAll("session shutdown")
 	}
 	if result.AsyncManager != nil {
 		result.AsyncManager.ShutdownAll(10 * time.Second)

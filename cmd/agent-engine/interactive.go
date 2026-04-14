@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/wall-ai/agent-engine/internal/agent"
+	agentswarm "github.com/wall-ai/agent-engine/internal/agent/swarm"
 	"github.com/wall-ai/agent-engine/internal/buddy"
 	"github.com/wall-ai/agent-engine/internal/engine"
 	"github.com/wall-ai/agent-engine/internal/session"
 	"github.com/wall-ai/agent-engine/internal/tool/askuser"
+	"github.com/wall-ai/agent-engine/internal/tool/sendmessage"
 	"github.com/wall-ai/agent-engine/internal/tui"
 	"github.com/wall-ai/agent-engine/internal/util"
 )
@@ -187,6 +190,64 @@ func runInteractiveMode(ctx context.Context, appCfg *util.AppConfig, wd string) 
 
 	// BUG-7 fix: wire callbacks once to avoid per-submission data race.
 	wireRunnerCallbacks(runner, program)
+	if result.PermBridge != nil {
+		result.PermBridge.SetOnRequest(func(req *agentswarm.PermissionBridgeRequest) {
+			if req == nil || program == nil {
+				return
+			}
+			program.Send(tui.TeammatePermissionRequestMsg{
+				WorkerName:  req.WorkerName,
+				WorkerColor: req.WorkerColor,
+				ToolName:    req.ToolName,
+				Description: req.Description,
+				RequestID:   req.RequestID,
+				ResponseCh:  req.ResponseCh,
+			})
+		})
+	}
+	for _, smTool := range result.SendMessageTools {
+		if smTool == nil {
+			continue
+		}
+		smTool.SetStructuredSendCallback(func(ev sendmessage.StructuredSendEvent) {
+			if program == nil {
+				return
+			}
+			name := ev.From
+			if parsed, _ := agentswarm.ParseAgentID(ev.From); parsed != "" {
+				name = parsed
+			}
+			switch ev.MessageType {
+			case "shutdown_request":
+				program.Send(tui.TeammateMessageMsg{
+					From:         name,
+					Content:      fmt.Sprintf("requested shutdown for %s: %s", shortAgentName(ev.To), strings.TrimSpace(ev.Message)),
+					IsStructured: true,
+				})
+			case "shutdown_approved", "shutdown_response":
+				approved := ev.Approved == nil || *ev.Approved
+				if approved {
+					program.Send(tui.TeammateShutdownMsg{
+						Name:    shortAgentName(ev.To),
+						AgentID: ev.To,
+						Reason:  strings.TrimSpace(ev.Message),
+					})
+				} else {
+					program.Send(tui.TeammateMessageMsg{
+						From:         shortAgentName(ev.To),
+						Content:      fmt.Sprintf("rejected shutdown: %s", strings.TrimSpace(ev.Message)),
+						IsStructured: true,
+					})
+				}
+			case "shutdown_rejected":
+				program.Send(tui.TeammateMessageMsg{
+					From:         shortAgentName(ev.To),
+					Content:      fmt.Sprintf("rejected shutdown: %s", strings.TrimSpace(ev.Message)),
+					IsStructured: true,
+				})
+			}
+		})
+	}
 
 	// Start idle notification poller so coordinator receives task-notifications
 	// even while waiting for user input (aligned with TS idle drain).
@@ -305,4 +366,11 @@ func formatToolInput(ev *engine.StreamEvent) string {
 		return fmt.Sprintf("%v", ev.ToolInput)
 	}
 	return string(data)
+}
+
+func shortAgentName(agentID string) string {
+	if name, _ := agentswarm.ParseAgentID(agentID); name != "" {
+		return name
+	}
+	return agentID
 }

@@ -117,6 +117,7 @@ func BuildCheckpointFromRun(
 	agentID string,
 	sessionID string,
 	def *AgentDefinition,
+	params RunAgentParams,
 	turnCount int,
 	maxTurns int,
 	workDir string,
@@ -124,18 +125,30 @@ func BuildCheckpointFromRun(
 	output string,
 	background bool,
 ) *AgentCheckpoint {
+	definition := GeneralPurposeAgent
+	if def != nil {
+		definition = *def
+	}
 	return &AgentCheckpoint{
-		AgentID:     agentID,
-		SessionID:   sessionID,
-		Definition:  *def,
-		Status:      AgentStatusRunning,
-		TurnCount:   turnCount,
-		MaxTurns:    maxTurns,
-		WorkDir:     workDir,
-		WorktreeDir: worktreeDir,
-		Output:      output,
-		Background:  background,
-		CreatedAt:   time.Now(),
+		AgentID:        agentID,
+		SessionID:      sessionID,
+		Definition:     definition,
+		Status:         AgentStatusRunning,
+		TurnCount:      turnCount,
+		MaxTurns:       maxTurns,
+		WorkDir:        workDir,
+		WorktreeDir:    worktreeDir,
+		Output:         output,
+		Background:     background,
+		CreatedAt:      time.Now(),
+		SystemPrompt:   params.SystemPrompt,
+		Model:          params.Model,
+		AllowedTools:   append([]string(nil), params.AllowedTools...),
+		PermissionMode: params.PermissionMode,
+		Description:    params.Description,
+		IsolationMode:  params.IsolationMode,
+		IsFork:         params.IsFork,
+		ParentContext:  params.ParentContext,
 	}
 }
 

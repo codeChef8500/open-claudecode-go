@@ -44,6 +44,14 @@ type AgentCheckpoint struct {
 
 	// Model is the model in use at checkpoint time.
 	Model string `json:"model,omitempty"`
+
+	// Preserved run params for higher-fidelity resume.
+	AllowedTools   []string         `json:"allowed_tools,omitempty"`
+	PermissionMode string           `json:"permission_mode,omitempty"`
+	Description    string           `json:"description,omitempty"`
+	IsolationMode  IsolationMode    `json:"isolation_mode,omitempty"`
+	IsFork         bool             `json:"is_fork,omitempty"`
+	ParentContext  *SubagentContext `json:"parent_context,omitempty"`
 }
 
 // ResumeManager handles agent checkpoint persistence and recovery.
@@ -215,6 +223,12 @@ func BuildResumeParams(cp *AgentCheckpoint) RunAgentParams {
 		Model:           cp.Model,
 		SystemPrompt:    cp.SystemPrompt,
 		TeamName:        cp.TeamName,
+		AllowedTools:    append([]string(nil), cp.AllowedTools...),
+		PermissionMode:  cp.PermissionMode,
+		Description:     cp.Description,
+		IsFork:          cp.IsFork,
+		ParentContext:   cp.ParentContext,
+		IsolationMode:   cp.IsolationMode,
 	}
 
 	if cp.WorktreeDir != "" {

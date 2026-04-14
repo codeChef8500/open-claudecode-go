@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/wall-ai/agent-engine/internal/engine"
 	"github.com/wall-ai/agent-engine/internal/tool"
@@ -26,6 +27,13 @@ type Input struct {
 	Format string `json:"format,omitempty"`
 	// Ephemeral if true means the message should not be persisted to history.
 	Ephemeral bool `json:"ephemeral,omitempty"`
+	// Source identifies the originator (e.g. "hook:pre-edit", "agent:explorer").
+	Source string `json:"source,omitempty"`
+	// JSONSchema, if provided, validates the text as JSON against this schema.
+	// Only used when Format is "json".
+	JSONSchema json.RawMessage `json:"json_schema,omitempty"`
+	// Metadata carries extra key-value pairs for consumers.
+	Metadata map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // SyntheticOutputTool injects synthetic content into the conversation stream.
@@ -52,7 +60,10 @@ func (t *SyntheticOutputTool) InputSchema() json.RawMessage {
 			"text":{"type":"string","description":"The synthetic text content to inject."},
 			"role":{"type":"string","description":"Message role (assistant or system).","enum":["assistant","system"]},
 			"format":{"type":"string","description":"Output format.","enum":["text","markdown","json"]},
-			"ephemeral":{"type":"boolean","description":"If true, message is not persisted to history."}
+			"ephemeral":{"type":"boolean","description":"If true, message is not persisted to history."},
+			"source":{"type":"string","description":"Source identifier (hook name, agent type, etc.)."},
+			"json_schema":{"type":"object","description":"JSON Schema to validate text against when format is json."},
+			"metadata":{"type":"object","description":"Additional key-value metadata."}
 		},
 		"required":["text"]
 	}`)
@@ -62,6 +73,30 @@ func (t *SyntheticOutputTool) Prompt(uctx *tool.UseContext) string {
 	return `## SyntheticOutput
 Inject synthetic content into the conversation. Used internally by hooks
 and system processes. Not intended for direct use by the assistant.`
+}
+
+func (t *SyntheticOutputTool) ValidateInput(_ context.Context, input json.RawMessage) error {
+	var in Input
+	if err := json.Unmarshal(input, &in); err != nil {
+		return fmt.Errorf("invalid input: %w", err)
+	}
+	if in.Text == "" {
+		return fmt.Errorf("text must not be empty")
+	}
+	// If format is JSON and a schema is provided, validate the text is valid JSON.
+	if in.Format == "json" {
+		if !json.Valid([]byte(in.Text)) {
+			return fmt.Errorf("text must be valid JSON when format is 'json'")
+		}
+		// Dynamic schema validation: if JSONSchema is provided,
+		// perform basic type-level validation.
+		if len(in.JSONSchema) > 0 {
+			if err := validateJSONAgainstSchema(in.Text, in.JSONSchema); err != nil {
+				return fmt.Errorf("JSON schema validation failed: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 func (t *SyntheticOutputTool) CheckPermissions(ctx context.Context, input json.RawMessage, uctx *tool.UseContext) error {
@@ -119,3 +154,50 @@ func (t *SyntheticOutputTool) Call(ctx context.Context, input json.RawMessage, u
 func (t *SyntheticOutputTool) GetActivityDescription(_ json.RawMessage) string {
 	return "Injecting synthetic output"
 }
+
+// ── JSON Schema Validation ──────────────────────────────────────────────
+
+// validateJSONAgainstSchema performs basic validation of a JSON string against
+// a JSON Schema. This is a lightweight implementation that checks:
+// - required fields
+// - top-level type matching
+// Full JSON Schema validation would require a dedicated library.
+func validateJSONAgainstSchema(jsonText string, schemaRaw json.RawMessage) error {
+	var schema struct {
+		Type       string                 `json:"type"`
+		Required   []string               `json:"required"`
+		Properties map[string]interface{} `json:"properties"`
+	}
+	if err := json.Unmarshal(schemaRaw, &schema); err != nil {
+		return fmt.Errorf("invalid schema: %w", err)
+	}
+
+	// Check top-level type.
+	trimmed := strings.TrimSpace(jsonText)
+	switch schema.Type {
+	case "object":
+		if !strings.HasPrefix(trimmed, "{") {
+			return fmt.Errorf("expected JSON object but got: %s", trimmed[:min(20, len(trimmed))])
+		}
+	case "array":
+		if !strings.HasPrefix(trimmed, "[") {
+			return fmt.Errorf("expected JSON array but got: %s", trimmed[:min(20, len(trimmed))])
+		}
+	}
+
+	// Check required fields for objects.
+	if schema.Type == "object" && len(schema.Required) > 0 {
+		var obj map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonText), &obj); err != nil {
+			return fmt.Errorf("failed to parse as object: %w", err)
+		}
+		for _, field := range schema.Required {
+			if _, ok := obj[field]; !ok {
+				return fmt.Errorf("missing required field: %s", field)
+			}
+		}
+	}
+
+	return nil
+}
+

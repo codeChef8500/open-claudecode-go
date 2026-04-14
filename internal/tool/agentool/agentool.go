@@ -55,6 +55,8 @@ type AgentToolConfig struct {
 	Runner *agent.AgentRunner
 	// AsyncManager manages background agent lifecycles (Phase 3).
 	AsyncManager *agent.AsyncLifecycleManager
+	// ResumeManager persists checkpoints for higher-fidelity fg→bg conversion.
+	ResumeManager *agent.ResumeManager
 	// Loader provides agent definitions (Phase 1).
 	Loader *agent.AgentLoader
 	// TeamManager manages team state and membership.
@@ -72,6 +74,10 @@ type AgentToolConfig struct {
 	// RegisterAgentName registers a name→agentID mapping for SendMessage routing.
 	// Aligned with TS AgentTool.tsx:700-712 agentNameRegistry.
 	RegisterAgentName func(name, agentID string)
+	// AutoBackgroundMs auto-converts long-running foreground agents to background.
+	AutoBackgroundMs int64
+	// ProgressCallback emits lifecycle notifications for async/fork launches.
+	ProgressCallback func(agentID string, notif agent.Notification)
 }
 
 // AgentTool spawns a sub-agent to complete a task.
@@ -361,6 +367,71 @@ func (t *AgentTool) handleSyncPath(ctx context.Context, agentID string, in Input
 	// Try new runner first.
 	if t.cfg.Runner != nil {
 		params := t.buildRunParams(agentID, in, uctx)
+		if t.cfg.AutoBackgroundMs > 0 && t.cfg.AsyncManager != nil {
+			fgCtx, cancel := context.WithCancel(ctx)
+			converter := agent.NewFgToBgConverter(t.cfg.AsyncManager, t.cfg.ResumeManager, t.cfg.Runner)
+			reg := agent.NewForegroundAgentRegistration(agentID, t.cfg.AutoBackgroundMs, cancel, converter, func() *agent.AgentCheckpoint {
+				maxTurns := params.MaxTurns
+				if maxTurns <= 0 {
+					maxTurns = 50
+				}
+				return agent.BuildCheckpointFromRun(
+					agentID,
+					agentID,
+					params.AgentDef,
+					params,
+					0,
+					maxTurns,
+					params.WorkDir,
+					"",
+					"",
+					true,
+				)
+			})
+			resultCh := make(chan *agent.AgentRunResult, 1)
+			go func() {
+				resultCh <- t.cfg.Runner.RunAgent(fgCtx, params)
+			}()
+			go func() {
+				select {
+				case result := <-resultCh:
+					reg.ReportResult(result)
+				default:
+				}
+			}()
+			race := reg.RunRace(ctx)
+			switch race.Outcome {
+			case agent.RaceOutcomeForeground:
+				result := race.ForegroundResult
+				if result == nil {
+					ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: "Foreground agent finished without result.", IsError: true}
+					return
+				}
+				if result.Error != nil {
+					ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: result.Error.Error(), IsError: true}
+					return
+				}
+				ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: agent.FormatAgentResult(result, 50000)}
+				return
+			case agent.RaceOutcomeBackground:
+				if uctx.SetToolJSX != nil {
+					uctx.SetToolJSX(uctx.ToolUseID, map[string]string{"status": "background", "agentId": agentID})
+				}
+				msg := "Agent moved to background execution."
+				if race.ConversionResult != nil {
+					msg = agent.FormatConversionMessage(race.ConversionResult)
+				}
+				ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: msg}
+				return
+			default:
+				errText := "failed to auto-background agent"
+				if race.Error != nil {
+					errText = race.Error.Error()
+				}
+				ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: errText, IsError: true}
+				return
+			}
+		}
 		result := t.cfg.Runner.RunAgent(ctx, params)
 		if result.Error != nil {
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: result.Error.Error(), IsError: true}
@@ -395,10 +466,16 @@ func (t *AgentTool) handleAsyncPath(ctx context.Context, agentID string, in Inpu
 	if t.cfg.AsyncManager != nil && t.cfg.Runner != nil {
 		params := t.buildRunParams(agentID, in, uctx)
 		params.Background = true
+		if uctx.SetToolJSX != nil {
+			uctx.SetToolJSX(uctx.ToolUseID, map[string]string{"status": "launching", "agentId": agentID})
+		}
 		launchedID, err := t.cfg.AsyncManager.Launch(ctx, params)
 		if err != nil {
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: err.Error(), IsError: true}
 			return
+		}
+		if t.cfg.ProgressCallback != nil {
+			t.cfg.ProgressCallback(launchedID, agent.Notification{Type: agent.NotificationTypeProgress, AgentID: launchedID, Description: in.Description, Message: "Background agent started"})
 		}
 		// Register name → agentId for SendMessage routing (aligned with TS:703-712).
 		// Post-launch so we don't leave a stale entry if spawn fails.
@@ -425,6 +502,9 @@ func (t *AgentTool) handleAsyncPath(ctx context.Context, agentID string, in Inpu
 			result["team_name"] = teamName
 		}
 		payload, _ := json.Marshal(result)
+		if uctx.SetToolJSX != nil {
+			uctx.SetToolJSX(uctx.ToolUseID, map[string]string{"status": "background", "agentId": launchedID})
+		}
 		ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: string(payload)}
 		return
 	}
@@ -466,10 +546,16 @@ func (t *AgentTool) handleForkPath(ctx context.Context, agentID string, in Input
 
 	// Fork always runs async.
 	if t.cfg.AsyncManager != nil {
+		if uctx.SetToolJSX != nil {
+			uctx.SetToolJSX(uctx.ToolUseID, map[string]string{"status": "forking", "agentId": agentID})
+		}
 		launchedID, err := t.cfg.AsyncManager.Launch(ctx, params)
 		if err != nil {
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: err.Error(), IsError: true}
 			return
+		}
+		if t.cfg.ProgressCallback != nil {
+			t.cfg.ProgressCallback(launchedID, agent.Notification{Type: agent.NotificationTypeProgress, AgentID: launchedID, Description: in.Description, Message: "Forked agent started"})
 		}
 		ch <- &engine.ContentBlock{
 			Type: engine.ContentTypeText,

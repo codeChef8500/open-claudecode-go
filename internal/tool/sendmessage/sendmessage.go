@@ -20,7 +20,9 @@ type Input struct {
 	// Target agent ID for multi-agent message passing.
 	To string `json:"to,omitempty"`
 	// MessageType for structured messages: "text", "shutdown_request",
-	// "shutdown_response", "plan_approval_response".
+	// "shutdown_response", "shutdown_approved", "shutdown_rejected",
+	// "plan_approval_request", "plan_approval_response", "plan_approval",
+	// "plan_rejection".
 	MessageType string `json:"message_type,omitempty"`
 	// Priority: "normal", "high", "low".
 	Priority string `json:"priority,omitempty"`
@@ -42,6 +44,15 @@ type structuredMailboxSender interface {
 	SendEnvelope(from, to string, env *agentswarm.MailboxEnvelope) error
 }
 
+// StructuredSendEvent describes a structured inter-agent message that was emitted.
+type StructuredSendEvent struct {
+	MessageType string
+	From        string
+	To          string
+	Message     string
+	Approved    *bool
+}
+
 // SendMessageTool sends messages between agents.
 type SendMessageTool struct {
 	tool.BaseTool
@@ -50,6 +61,7 @@ type SendMessageTool struct {
 	// ResolveAgentName resolves a human name to an agent ID.
 	// Aligned with TS agentNameRegistry.get(input.to).
 	ResolveAgentName func(name string) string
+	OnStructuredSend func(StructuredSendEvent)
 }
 
 // New creates a SendMessageTool without mailbox integration (legacy).
@@ -70,6 +82,11 @@ func NewWithAllDeps(sender MailboxSender, asyncMgr *agent.AsyncLifecycleManager,
 	return &SendMessageTool{sender: sender, asyncMgr: asyncMgr, ResolveAgentName: resolver}
 }
 
+// SetStructuredSendCallback registers an observer for structured sends.
+func (t *SendMessageTool) SetStructuredSendCallback(fn func(StructuredSendEvent)) {
+	t.OnStructuredSend = fn
+}
+
 func (t *SendMessageTool) Name() string           { return "SendMessage" }
 func (t *SendMessageTool) UserFacingName() string { return "send_message" }
 func (t *SendMessageTool) Description() string {
@@ -88,7 +105,7 @@ func (t *SendMessageTool) InputSchema() json.RawMessage {
 		"properties":{
 			"message":{"type":"string","description":"Message content to send."},
 			"to":{"type":"string","description":"Target agent ID, 'parent' for parent agent, or '*' to broadcast to team. Omit to send to parent."},
-			"message_type":{"type":"string","enum":["text","shutdown_request","shutdown_response","plan_approval_response"],"description":"Message type. Default: text."},
+			"message_type":{"type":"string","enum":["text","shutdown_request","shutdown_response","shutdown_approved","shutdown_rejected","plan_approval_request","plan_approval_response","plan_approval","plan_rejection"],"description":"Message type. Default: text."},
 			"priority":{"type":"string","enum":["normal","high","low"],"description":"Message priority. Default: normal."}
 		},
 		"required":["message"]
@@ -189,7 +206,7 @@ func (t *SendMessageTool) Call(_ context.Context, input json.RawMessage, uctx *t
 				return
 			}
 			// Fall back to mailbox.
-			resultText := t.handleDirectSend(fromAgent, in.To, msgContent, in.Priority)
+			resultText := t.handleDirectSend(fromAgent, targetID, msgContent, in.Priority)
 			ch <- &engine.ContentBlock{Type: engine.ContentTypeText, Text: resultText}
 		}
 	}()
@@ -248,14 +265,19 @@ func (t *SendMessageTool) handleStructuredSend(from, to string, in Input) (strin
 	switch in.MessageType {
 	case "shutdown_request":
 		env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypeShutdownRequest, agentswarm.ShutdownRequestPayload{Reason: in.Message})
-	case "shutdown_response":
+	case "shutdown_response", "shutdown_approved", "shutdown_rejected":
 		if in.Approved != nil && !*in.Approved {
 			env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypeShutdownRejected, agentswarm.ShutdownRejectedPayload{Reason: in.Message})
 		} else {
 			env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypeShutdownApproved, agentswarm.ShutdownApprovedPayload{Summary: in.Message})
 		}
-	case "plan_approval_response":
+	case "plan_approval_request":
+		env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypePlanApprovalRequest, agentswarm.PlanApprovalRequestPayload{PlanText: in.Message, AgentName: from})
+	case "plan_approval_response", "plan_approval", "plan_rejection":
 		approved := in.Approved == nil || *in.Approved
+		if in.MessageType == "plan_rejection" {
+			approved = false
+		}
 		env, err = agentswarm.NewEnvelope(from, to, agentswarm.MessageTypePlanApprovalResponse, agentswarm.PlanApprovalResponsePayload{Approved: approved, Feedback: in.Message})
 	default:
 		return "", false
@@ -265,6 +287,15 @@ func (t *SendMessageTool) handleStructuredSend(from, to string, in Input) (strin
 	}
 	if err := structuredSender.SendEnvelope(from, to, env); err != nil {
 		return fmt.Sprintf("Structured send failed: %v", err), true
+	}
+	if t.OnStructuredSend != nil {
+		t.OnStructuredSend(StructuredSendEvent{
+			MessageType: in.MessageType,
+			From:        from,
+			To:          to,
+			Message:     in.Message,
+			Approved:    in.Approved,
+		})
 	}
 	return fmt.Sprintf("Structured message sent to %s.", to), true
 }

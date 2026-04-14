@@ -194,12 +194,18 @@ func ForkAgentParams(
 
 	// Build forked messages with prompt cache sharing.
 	forkedMessages := BuildForkedMessages(parentMessages, task, parentSystemPrompt)
+	forkContext := parentContext
+	if parentContext != nil {
+		copyCtx := *parentContext
+		copyCtx.IsForkChild = true
+		forkContext = &copyCtx
+	}
 
 	return RunAgentParams{
 		AgentDef:       &forkDef,
 		Task:           task,
 		ParentMessages: forkedMessages,
-		ParentContext:  parentContext,
+		ParentContext:  forkContext,
 		WorkDir:        workDir,
 		IsFork:         true,
 		IsolationMode:  IsolationWorktree,

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"strings"
@@ -135,6 +136,49 @@ func TestShutdownFlow(t *testing.T) {
 	}
 }
 
+func TestStructuredShutdownEmitsEvent(t *testing.T) {
+	handler := NewStructuredMessageHandler(NewTaskFramework(), nil, nil)
+	var got StructuredMessageEvent
+	handler.SetEventCallback(func(ev StructuredMessageEvent) {
+		got = ev
+	})
+
+	_, err := handler.HandleStructuredMessage(StructuredMessage{
+		Type:   MsgTypeShutdownReject,
+		From:   "worker-1",
+		To:     "team-lead",
+		Reason: "still working",
+		Color:  "#ff00aa",
+	})
+	if err != nil {
+		t.Fatalf("HandleStructuredMessage: %v", err)
+	}
+	if got.Kind != MsgTypeShutdownReject {
+		t.Fatalf("unexpected event kind: %#v", got)
+	}
+	if got.From != "worker-1" || got.Reason != "still working" || got.Color != "#ff00aa" {
+		t.Fatalf("unexpected event payload: %#v", got)
+	}
+}
+
+func TestForkAgentParamsMarksForkChild(t *testing.T) {
+	parentCtx := &SubagentContext{ParentAgentID: "leader-1", TeamName: "alpha", IsForkChild: false}
+	params := ForkAgentParams("do work", nil, "", "repo", parentCtx)
+
+	if !params.IsFork {
+		t.Fatal("expected fork params to set IsFork")
+	}
+	if params.ParentContext == nil {
+		t.Fatal("expected fork params to include parent context")
+	}
+	if !params.ParentContext.IsForkChild {
+		t.Fatal("expected fork child context to be marked as IsForkChild")
+	}
+	if parentCtx.IsForkChild {
+		t.Fatal("expected original parent context to remain unchanged")
+	}
+}
+
 // TestStructuredMessageTypes verifies ParseStructuredMessageType.
 func TestStructuredMessageTypes(t *testing.T) {
 	tests := []struct {
@@ -158,6 +202,91 @@ func TestStructuredMessageTypes(t *testing.T) {
 			t.Errorf("ParseStructuredMessageType(%q) = %q, want %q",
 				tt.input, got, tt.expected)
 		}
+	}
+}
+
+func TestAsyncLifecycleResumePreservesRunParams(t *testing.T) {
+	runner := NewAgentRunner(AgentRunnerConfig{})
+	mgr := NewAsyncLifecycleManager(runner)
+
+	mgr.agents["agent-1"] = &AsyncAgent{
+		AgentID:    "agent-1",
+		Definition: AgentDefinition{AgentID: "agent-1", AgentType: "worker", TeamName: "alpha"},
+		Status:     AsyncStatusDone,
+		done:       make(chan struct{}),
+		runParams: RunAgentParams{
+			Task:            "original task",
+			WorkDir:         "/tmp/work",
+			AllowedTools:    []string{"Read", "Edit"},
+			SystemPrompt:    "system",
+			TeamName:        "alpha",
+			ParentContext:   &SubagentContext{ParentAgentID: "parent-1", TeamName: "alpha", IsForkChild: true},
+			ExistingAgentID: "agent-1",
+		},
+	}
+
+	_, err := mgr.Resume(context.Background(), "agent-1", "resume prompt")
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+
+	resumed, ok := mgr.agents["agent-1"]
+	if !ok {
+		t.Fatal("resumed agent missing")
+	}
+	if resumed.runParams.WorkDir != "/tmp/work" {
+		t.Fatalf("WorkDir not preserved: %q", resumed.runParams.WorkDir)
+	}
+	if len(resumed.runParams.AllowedTools) != 2 || resumed.runParams.AllowedTools[1] != "Edit" {
+		t.Fatalf("AllowedTools not preserved: %#v", resumed.runParams.AllowedTools)
+	}
+	if resumed.runParams.ParentContext == nil || !resumed.runParams.ParentContext.IsForkChild {
+		t.Fatal("ParentContext not preserved on resume")
+	}
+	if resumed.runParams.Task != "resume prompt" {
+		t.Fatalf("Task not updated for resume: %q", resumed.runParams.Task)
+	}
+	resumed.cancel()
+}
+
+func TestBuildResumeParamsPreservesCheckpointFields(t *testing.T) {
+	cp := &AgentCheckpoint{
+		AgentID:        "agent-2",
+		Definition:     AgentDefinition{AgentID: "agent-2", AgentType: "worker", Task: "original", TeamName: "beta"},
+		TurnCount:      2,
+		MaxTurns:       7,
+		WorkDir:        "/repo",
+		WorktreeDir:    "/repo/.worktrees/agent-2",
+		Background:     true,
+		SystemPrompt:   "sys",
+		Model:          "sonnet",
+		AllowedTools:   []string{"Read", "Edit"},
+		PermissionMode: "plan",
+		Description:    "resume me",
+		IsolationMode:  IsolationRemote,
+		IsFork:         true,
+		ParentContext:  &SubagentContext{ParentAgentID: "parent-2", IsForkChild: true},
+		TeamName:       "beta",
+	}
+
+	params := BuildResumeParams(cp)
+	if params.WorkDir != cp.WorktreeDir {
+		t.Fatalf("expected worktree dir to win, got %q", params.WorkDir)
+	}
+	if params.IsolationMode != IsolationWorktree {
+		t.Fatalf("expected worktree isolation on resume, got %q", params.IsolationMode)
+	}
+	if params.MaxTurns != 5 {
+		t.Fatalf("expected remaining turns 5, got %d", params.MaxTurns)
+	}
+	if params.PermissionMode != "plan" || params.Description != "resume me" || !params.IsFork {
+		t.Fatalf("preserved fields missing: %#v", params)
+	}
+	if len(params.AllowedTools) != 2 || params.AllowedTools[0] != "Read" {
+		t.Fatalf("allowed tools not preserved: %#v", params.AllowedTools)
+	}
+	if params.ParentContext == nil || params.ParentContext.ParentAgentID != "parent-2" {
+		t.Fatalf("parent context not preserved: %#v", params.ParentContext)
 	}
 }
 

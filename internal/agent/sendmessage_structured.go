@@ -39,11 +39,23 @@ type StructuredMessage struct {
 	Timestamp int64                 `json:"timestamp,omitempty"`
 }
 
+// StructuredMessageEvent is an observable lifecycle event emitted while handling a structured message.
+type StructuredMessageEvent struct {
+	Kind    StructuredMessageType
+	From    string
+	To      string
+	Reason  string
+	Summary string
+	Content string
+	Color   string
+}
+
 // StructuredMessageHandler processes typed inter-agent messages.
 type StructuredMessageHandler struct {
 	taskFramework *TaskFramework
 	asyncManager  *AsyncLifecycleManager
 	teamManager   *TeamManager
+	onEvent       func(StructuredMessageEvent)
 }
 
 // NewStructuredMessageHandler creates a handler.
@@ -56,6 +68,17 @@ func NewStructuredMessageHandler(
 		taskFramework: tf,
 		asyncManager:  am,
 		teamManager:   tm,
+	}
+}
+
+// SetEventCallback registers an observer for structured message lifecycle events.
+func (h *StructuredMessageHandler) SetEventCallback(fn func(StructuredMessageEvent)) {
+	h.onEvent = fn
+}
+
+func (h *StructuredMessageHandler) emitEvent(ev StructuredMessageEvent) {
+	if h != nil && h.onEvent != nil {
+		h.onEvent(ev)
 	}
 }
 
@@ -93,6 +116,7 @@ func (h *StructuredMessageHandler) handleShutdownRequest(msg StructuredMessage) 
 		shutdownMsg := fmt.Sprintf("<shutdown-request from=%q reason=%q/>", msg.From, msg.Reason)
 		h.taskFramework.QueuePendingMessage(msg.To, shutdownMsg)
 	}
+	h.emitEvent(StructuredMessageEvent{Kind: MsgTypeShutdownRequest, From: msg.From, To: msg.To, Reason: msg.Reason, Color: msg.Color})
 
 	return fmt.Sprintf("Shutdown request sent to %s.", msg.To), nil
 }
@@ -114,6 +138,7 @@ func (h *StructuredMessageHandler) handleShutdownApproval(msg StructuredMessage)
 			)
 		}
 	}
+	h.emitEvent(StructuredMessageEvent{Kind: MsgTypeShutdownApproval, From: msg.From, To: msg.To, Summary: msg.Summary, Color: msg.Color})
 
 	return fmt.Sprintf("Teammate %s approved shutdown and is stopping.", msg.From), nil
 }
@@ -124,6 +149,7 @@ func (h *StructuredMessageHandler) handleShutdownRejection(msg StructuredMessage
 		slog.String("from", msg.From),
 		slog.String("reason", msg.Reason),
 	)
+	h.emitEvent(StructuredMessageEvent{Kind: MsgTypeShutdownReject, From: msg.From, To: msg.To, Reason: msg.Reason, Color: msg.Color})
 	return fmt.Sprintf("Teammate %s rejected shutdown: %s", msg.From, msg.Reason), nil
 }
 

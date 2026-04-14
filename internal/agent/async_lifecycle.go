@@ -38,6 +38,8 @@ type AsyncAgent struct {
 	notifications *NotificationQueue
 	// progress tracks incremental progress.
 	progress *ProgressTracker
+	// runParams preserves the original launch parameters for resume fidelity.
+	runParams RunAgentParams
 }
 
 // AsyncAgentStatus represents the lifecycle state of an async agent.
@@ -104,6 +106,7 @@ func (m *AsyncLifecycleManager) Launch(parentCtx context.Context, params RunAgen
 		done:          make(chan struct{}),
 		notifications: NewNotificationQueue(100),
 		progress:      NewProgressTracker(agentID),
+		runParams:     params,
 	}
 
 	m.mu.Lock()
@@ -165,10 +168,12 @@ func (m *AsyncLifecycleManager) runAsync(ctx context.Context, agent *AsyncAgent,
 	// Populate extended fields for TS-aligned task-notification XML.
 	duration := agent.FinishedAt.Sub(agent.StartedAt)
 	notif := Notification{
-		Type:        NotificationTypeComplete,
-		AgentID:     agent.AgentID,
-		Description: params.Description,
-		Message:     formatCompletionNotification(agent),
+		Type:           NotificationTypeComplete,
+		AgentID:        agent.AgentID,
+		Description:    params.Description,
+		Message:        formatCompletionNotification(agent),
+		WorktreePath:   result.WorktreePath,
+		WorktreeBranch: result.WorktreeBranch,
 		Usage: &NotificationUsage{
 			DurationMs: int(duration.Milliseconds()),
 		},
@@ -379,12 +384,16 @@ func (m *AsyncLifecycleManager) Resume(parentCtx context.Context, agentID, promp
 	}
 
 	// Re-use the original agent definition.
-	params := RunAgentParams{
-		AgentDef:        &existing.Definition,
-		Task:            prompt,
-		Background:      true,
-		ExistingAgentID: agentID,
-		Description:     existing.Definition.AgentType + " (resumed)",
+	params := existing.runParams
+	params.AgentDef = &existing.Definition
+	params.Task = prompt
+	params.Background = true
+	params.ExistingAgentID = agentID
+	if params.Description == "" {
+		params.Description = existing.Definition.AgentType + " (resumed)"
+		if prompt != "" {
+			params.Description = prompt
+		}
 	}
 
 	// Create fresh context and agent state.
@@ -398,6 +407,7 @@ func (m *AsyncLifecycleManager) Resume(parentCtx context.Context, agentID, promp
 		done:          make(chan struct{}),
 		notifications: NewNotificationQueue(100),
 		progress:      NewProgressTracker(agentID),
+		runParams:     params,
 	}
 
 	m.mu.Lock()

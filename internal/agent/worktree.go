@@ -74,6 +74,17 @@ func WorktreeHasChanges(worktreePath string) (bool, error) {
 	return len(out) > 0, nil
 }
 
+// GetWorktreeBranch returns the current branch name for a worktree.
+func GetWorktreeBranch(worktreePath string) (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = worktreePath
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse --abbrev-ref HEAD: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // TouchWorktree updates the modification time of a worktree directory
 // to prevent stale cleanup.
 func TouchWorktree(worktreePath string) error {

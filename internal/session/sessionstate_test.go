@@ -3,6 +3,10 @@ package session
 import (
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/wall-ai/agent-engine/internal/agent"
+	agentswarm "github.com/wall-ai/agent-engine/internal/agent/swarm"
 )
 
 func TestSessionState_Basic(t *testing.T) {
@@ -102,5 +106,24 @@ func TestSessionState_Title(t *testing.T) {
 	}
 	if meta.Model != "claude-3-opus" {
 		t.Errorf("model = %q, want 'claude-3-opus'", meta.Model)
+	}
+}
+
+func TestShutdownWithSwarmManager(t *testing.T) {
+	result := &BootstrapResult{
+		SwarmManager: &agentswarm.SwarmManager{},
+		AsyncManager: agent.NewAsyncLifecycleManager(agent.NewAgentRunner(agent.AgentRunnerConfig{})),
+	}
+
+	done := make(chan struct{})
+	go func() {
+		Shutdown(result)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Shutdown did not return in time")
 	}
 }

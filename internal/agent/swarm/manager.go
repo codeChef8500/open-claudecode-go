@@ -32,17 +32,19 @@ type SwarmManager struct {
 	AppState       *state.AppState
 	InProcessBE    *InProcessBackend
 	TmuxBE         *TmuxBackendImpl
+	UDSBE          *UDSBackendImpl
+	BridgeBE       *BridgeBackendImpl
 	FileMailboxReg *FileMailboxRegistry
 	RunAgent       AgentRunFunc // wired by session runner
 }
 
 // SwarmManagerConfig configures the SwarmManager.
 type SwarmManagerConfig struct {
-	BaseDir      string          // for file persistence (~/.claude)
-	TeamManager  *agent.TeamManager
-	AppState     *state.AppState
-	BackendMode  BackendMode     // auto, in-process, tmux
-	RunAgent     AgentRunFunc    // agent run callback
+	BaseDir     string // for file persistence (~/.claude)
+	TeamManager *agent.TeamManager
+	AppState    *state.AppState
+	BackendMode BackendMode  // auto, in-process, tmux
+	RunAgent    AgentRunFunc // agent run callback
 }
 
 // NewSwarmManager creates and wires all swarm subsystems.
@@ -94,6 +96,10 @@ func NewSwarmManager(cfg SwarmManagerConfig) *SwarmManager {
 
 	// Create tmux backend (if available).
 	var tmuxBE *TmuxBackendImpl
+	udsBE := NewUDSBackend(UDSBackendConfig{Registry: teammates, FileMB: fileMBReg})
+	bridgeBE := NewBridgeBackend(BridgeBackendConfig{Registry: teammates, FileMB: fileMBReg})
+	backendReg.RegisterExecutor(BackendUDS, udsBE)
+	backendReg.RegisterExecutor(BackendBridge, bridgeBE)
 	detection := backendReg.Detect()
 	if detection.BackendType == BackendTmux || detection.IsInsideTmux {
 		tmuxBE = NewTmuxBackend(TmuxBackendConfig{
@@ -112,6 +118,8 @@ func NewSwarmManager(cfg SwarmManagerConfig) *SwarmManager {
 		AppState:       cfg.AppState,
 		InProcessBE:    inProcessBE,
 		TmuxBE:         tmuxBE,
+		UDSBE:          udsBE,
+		BridgeBE:       bridgeBE,
 		FileMailboxReg: fileMBReg,
 		RunAgent:       cfg.RunAgent,
 	}

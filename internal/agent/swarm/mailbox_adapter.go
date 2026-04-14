@@ -65,8 +65,8 @@ type HybridMailboxAdapter struct {
 
 // HybridMailboxConfig configures the hybrid mailbox adapter.
 type HybridMailboxConfig struct {
-	InMemory       *agent.MailboxRegistry
-	FileMB         *FileMailboxRegistry
+	InMemory        *agent.MailboxRegistry
+	FileMB          *FileMailboxRegistry
 	BackendResolver BackendResolver
 	MembersResolver TeamMembersResolver
 }
@@ -86,7 +86,7 @@ func (h *HybridMailboxAdapter) Send(from, to, text string, priority string, repl
 	backend := h.getBackend(to)
 
 	switch backend {
-	case BackendTmux:
+	case BackendTmux, BackendUDS, BackendBridge:
 		return h.sendViaFile(from, to, text, priority, replyTo)
 	default:
 		return h.sendViaMemory(from, to, text, priority, replyTo)
@@ -98,15 +98,15 @@ func (h *HybridMailboxAdapter) SendEnvelope(from, to string, env *MailboxEnvelop
 	backend := h.getBackend(to)
 
 	switch backend {
-	case BackendTmux:
+	case BackendTmux, BackendUDS, BackendBridge:
 		if h.fileMB == nil {
-			return fmt.Errorf("file mailbox not configured for tmux backend")
+			return fmt.Errorf("file mailbox not configured for external backend")
 		}
-		_, agentName := ParseAgentID(to)
-		if agentName == "" {
-			agentName = to
+		name, _ := ParseAgentID(to)
+		if name == "" {
+			name = to
 		}
-		return h.fileMB.Send(from, agentName, env)
+		return h.fileMB.Send(from, name, env)
 
 	default:
 		// Convert envelope to in-memory message.
@@ -145,15 +145,15 @@ func (h *HybridMailboxAdapter) ReadPending(agentID string) ([]MailboxEnvelope, e
 	backend := h.getBackend(agentID)
 
 	switch backend {
-	case BackendTmux:
+	case BackendTmux, BackendUDS, BackendBridge:
 		if h.fileMB == nil {
 			return nil, nil
 		}
-		_, agentName := ParseAgentID(agentID)
-		if agentName == "" {
-			agentName = agentID
+		name, _ := ParseAgentID(agentID)
+		if name == "" {
+			name = agentID
 		}
-		mb, err := h.fileMB.GetOrCreate(agentName)
+		mb, err := h.fileMB.GetOrCreate(name)
 		if err != nil {
 			return nil, err
 		}
@@ -183,15 +183,15 @@ func (h *HybridMailboxAdapter) MarkRead(agentID, msgID string) error {
 	backend := h.getBackend(agentID)
 
 	switch backend {
-	case BackendTmux:
+	case BackendTmux, BackendUDS, BackendBridge:
 		if h.fileMB == nil {
 			return nil
 		}
-		_, agentName := ParseAgentID(agentID)
-		if agentName == "" {
-			agentName = agentID
+		name, _ := ParseAgentID(agentID)
+		if name == "" {
+			name = agentID
 		}
-		mb, err := h.fileMB.GetOrCreate(agentName)
+		mb, err := h.fileMB.GetOrCreate(name)
 		if err != nil {
 			return err
 		}
@@ -208,15 +208,15 @@ func (h *HybridMailboxAdapter) Clear(agentID string) error {
 	backend := h.getBackend(agentID)
 
 	switch backend {
-	case BackendTmux:
+	case BackendTmux, BackendUDS, BackendBridge:
 		if h.fileMB == nil {
 			return nil
 		}
-		_, agentName := ParseAgentID(agentID)
-		if agentName == "" {
-			agentName = agentID
+		name, _ := ParseAgentID(agentID)
+		if name == "" {
+			name = agentID
 		}
-		mb, err := h.fileMB.GetOrCreate(agentName)
+		mb, err := h.fileMB.GetOrCreate(name)
 		if err != nil {
 			return err
 		}
@@ -258,10 +258,10 @@ func (h *HybridMailboxAdapter) sendViaMemory(from, to, text, priority, replyTo s
 
 func (h *HybridMailboxAdapter) sendViaFile(from, to, text, priority, replyTo string) (string, error) {
 	if h.fileMB == nil {
-		return "", fmt.Errorf("file mailbox not configured for tmux backend")
+		return "", fmt.Errorf("file mailbox not configured for external backend %s", to)
 	}
 
-	_, agentName := ParseAgentID(to)
+	agentName, _ := ParseAgentID(to)
 	if agentName == "" {
 		agentName = to
 	}

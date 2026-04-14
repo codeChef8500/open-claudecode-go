@@ -143,13 +143,15 @@ type RunAgentParams struct {
 
 // AgentRunResult holds the outcome of a completed agent run.
 type AgentRunResult struct {
-	AgentID    string
-	Output     string
-	Error      error
-	Status     AgentStatus
-	Duration   time.Duration
-	TurnCount  int
-	TokenUsage *engine.UsageStats
+	AgentID        string
+	Output         string
+	Error          error
+	Status         AgentStatus
+	Duration       time.Duration
+	TurnCount      int
+	TokenUsage     *engine.UsageStats
+	WorktreePath   string
+	WorktreeBranch string
 }
 
 // RunAgent executes the full agent lifecycle.
@@ -262,11 +264,12 @@ func (r *AgentRunner) RunAgent(ctx context.Context, params RunAgentParams) *Agen
 	tools = append(tools, mcpTools...)
 
 	// 9. Handle worktree isolation.
+	repoDir := effectiveDef.WorkDir
 	workDir := effectiveDef.WorkDir
 	var worktreePath string
 	if effectiveDef.Isolation == IsolationWorktree && r.worktreeManager != nil {
 		var err error
-		worktreePath, err = r.worktreeManager.CreateWorktree(agentID, workDir)
+		worktreePath, err = r.worktreeManager.CreateWorktree(agentID, repoDir)
 		if err != nil {
 			slog.Warn("agent: worktree creation failed, using parent workdir",
 				slog.String("agent_id", agentID),
@@ -320,7 +323,7 @@ func (r *AgentRunner) RunAgent(ctx context.Context, params RunAgentParams) *Agen
 	// 12. Create engine.
 	eng, err := engine.New(engineCfg, r.caller, tools)
 	if err != nil {
-		r.finalizeTask(agentID, "", err, worktreePath)
+		r.finalizeTask(agentID, "", err, repoDir, worktreePath)
 		return &AgentRunResult{
 			AgentID:  agentID,
 			Error:    err,
@@ -345,6 +348,12 @@ func (r *AgentRunner) RunAgent(ctx context.Context, params RunAgentParams) *Agen
 	result := r.executeLoop(ctx, eng, params.Task, effectiveDef, initialMessages, progressTracker, notifQueue)
 	result.AgentID = agentID
 	result.Duration = time.Since(startTime)
+	result.WorktreePath = worktreePath
+	if worktreePath != "" {
+		if branch, err := GetWorktreeBranch(worktreePath); err == nil {
+			result.WorktreeBranch = branch
+		}
+	}
 
 	// 16. Execute SubagentEnd hooks.
 	hookCtx.Status = string(result.Status)
@@ -353,7 +362,7 @@ func (r *AgentRunner) RunAgent(ctx context.Context, params RunAgentParams) *Agen
 	ExecuteHooks(ctx, HookSubagentEnd, &effectiveDef, hookCtx)
 
 	// 17. Cleanup worktree if created.
-	r.finalizeTask(agentID, result.Output, result.Error, worktreePath)
+	r.finalizeTask(agentID, result.Output, result.Error, repoDir, worktreePath)
 
 	slog.Info("agent: finished",
 		slog.String("agent_id", agentID),
@@ -570,7 +579,7 @@ func (r *AgentRunner) executeLoop(
 }
 
 // finalizeTask marks the task complete and cleans up resources.
-func (r *AgentRunner) finalizeTask(agentID, output string, err error, worktreePath string) {
+func (r *AgentRunner) finalizeTask(agentID, output string, err error, repoDir string, worktreePath string) {
 	if r.taskManager != nil {
 		if err != nil {
 			_ = r.taskManager.MarkFailed(agentID, err.Error())
@@ -589,7 +598,7 @@ func (r *AgentRunner) finalizeTask(agentID, output string, err error, worktreePa
 		hasChanges, _ := WorktreeHasChanges(worktreePath)
 		if !hasChanges {
 			// Safe to remove — no changes were made.
-			_ = r.worktreeManager.RemoveWorktree(agentID, worktreePath)
+			_ = r.worktreeManager.RemoveWorktree(agentID, repoDir)
 		} else {
 			slog.Info("agent: keeping worktree with changes",
 				slog.String("agent_id", agentID),
