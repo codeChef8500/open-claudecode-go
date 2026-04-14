@@ -49,6 +49,12 @@ type FrameworkTask struct {
 	PendingMessages []string
 	// Notified prevents duplicate terminal notifications.
 	Notified bool
+	// IsBackgrounded marks whether a foreground agent was converted to background.
+	// Aligned with TS LocalAgentTask.isBackgrounded.
+	IsBackgrounded bool
+	// DiskLoaded marks whether the task's transcript was loaded from disk (resume).
+	// Aligned with TS LocalAgentTask.diskLoaded.
+	DiskLoaded bool
 }
 
 // NewTaskFramework creates an empty TaskFramework.
@@ -339,4 +345,49 @@ func (f *TaskFramework) List() []map[string]interface{} {
 		})
 	}
 	return out
+}
+
+// KillAllRunningAgentTasks stops all running agent tasks (e.g. on ESC cancel).
+// Aligned with TS LocalAgentTask.tsx:killAllRunningAgentTasks.
+func (f *TaskFramework) KillAllRunningAgentTasks(cancelFn func(agentID string)) int {
+	f.mu.Lock()
+	var running []string
+	for id, t := range f.tasks {
+		if t.Status == AgentStatusRunning {
+			running = append(running, id)
+		}
+	}
+	f.mu.Unlock()
+
+	for _, id := range running {
+		if cancelFn != nil {
+			cancelFn(id)
+		}
+		f.mu.Lock()
+		if t, ok := f.tasks[id]; ok {
+			t.Status = AgentStatusCancelled
+			t.FinishedAt = time.Now()
+		}
+		f.mu.Unlock()
+	}
+
+	return len(running)
+}
+
+// MarkBackgrounded sets the IsBackgrounded flag on a task.
+func (f *TaskFramework) MarkBackgrounded(agentID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if t, ok := f.tasks[agentID]; ok {
+		t.IsBackgrounded = true
+	}
+}
+
+// MarkDiskLoaded sets the DiskLoaded flag on a task.
+func (f *TaskFramework) MarkDiskLoaded(agentID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if t, ok := f.tasks[agentID]; ok {
+		t.DiskLoaded = true
+	}
 }

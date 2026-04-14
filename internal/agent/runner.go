@@ -130,6 +130,15 @@ type RunAgentParams struct {
 	NotificationQueue *NotificationQueue
 	// Description is a short summary of what the agent does.
 	Description string
+	// CacheSafe marks that this agent's prompt is designed for prompt caching.
+	// Aligned with TS runAgent: cacheSafe parameter.
+	CacheSafe bool
+	// OmitClaudeMd skips CLAUDE.md injection for this agent.
+	// Aligned with TS AgentDefinition.omitClaudeMd.
+	OmitClaudeMd bool
+	// SidechainTranscript enables recording full transcript to a sidechain file.
+	// Aligned with TS runAgent: sidechain parameter for audit/debugging.
+	SidechainTranscript bool
 }
 
 // AgentRunResult holds the outcome of a completed agent run.
@@ -304,6 +313,8 @@ func (r *AgentRunner) RunAgent(ctx context.Context, params RunAgentParams) *Agen
 		PermissionMode:     effectiveDef.PermissionMode,
 		NonInteractive:     true, // agents don't prompt users
 		EffortValue:        effectiveDef.Effort,
+		CacheSafe:          params.CacheSafe,
+		OmitClaudeMd:       params.OmitClaudeMd || effectiveDef.OmitClaudeMd,
 	}
 
 	// 12. Create engine.

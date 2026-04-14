@@ -304,3 +304,101 @@ func (r *ForegroundAgentRegistration) IsConverted() bool {
 	defer r.mu.Unlock()
 	return r.converted
 }
+
+// ── MainSessionTask Lifecycle ────────────────────────────────────────────────
+// Aligned with claude-code-main's LocalMainSessionTask.ts (480 lines).
+// Enables Ctrl+B session backgrounding: the main query loop can be registered
+// as a task, backgrounded, then later foregrounded.
+
+// MainSessionTaskManager manages the main session's background/foreground state.
+type MainSessionTaskManager struct {
+	mu                 sync.Mutex
+	taskFramework      *TaskFramework
+	asyncManager       *AsyncLifecycleManager
+	foregroundedTaskID string // the currently-foregrounded session task ID
+}
+
+// NewMainSessionTaskManager creates a new manager.
+func NewMainSessionTaskManager(tf *TaskFramework, am *AsyncLifecycleManager) *MainSessionTaskManager {
+	return &MainSessionTaskManager{
+		taskFramework: tf,
+		asyncManager:  am,
+	}
+}
+
+// mainSessionPrefix distinguishes main session tasks from regular agent tasks.
+// Regular agents use 'a-' prefix; session tasks use 's-' prefix.
+const mainSessionPrefix = "s-"
+
+// IsMainSessionTask checks if an agentID represents a main session task.
+// Aligned with TS isMainSessionTask (agentType === 'main-session').
+func IsMainSessionTask(agentID string) bool {
+	return len(agentID) > 2 && agentID[:2] == mainSessionPrefix
+}
+
+// RegisterMainSessionTask registers the current main query as a backgroundable task.
+// Called when the user presses Ctrl+B or when auto-background triggers.
+// Aligned with TS LocalMainSessionTask.registerMainSessionTask.
+func (m *MainSessionTaskManager) RegisterMainSessionTask(sessionID, description string) string {
+	taskID := mainSessionPrefix + sessionID
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.taskFramework != nil {
+		def := AgentDefinition{
+			AgentID:   taskID,
+			AgentType: "main-session",
+			Task:      description,
+		}
+		t := m.taskFramework.Register(def)
+		t.IsBackgrounded = true
+	}
+
+	return taskID
+}
+
+// CompleteMainSessionTask marks a session task as completed.
+// If the task is still foregrounded, it emits a completion notification;
+// if backgrounded, it emits a background completion notification.
+// Aligned with TS completeMainSessionTask.
+func (m *MainSessionTaskManager) CompleteMainSessionTask(taskID string, output string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.taskFramework != nil {
+		if t, ok := m.taskFramework.GetTask(taskID); ok {
+			t.Status = AgentStatusDone
+			t.FinishedAt = time.Now()
+		}
+	}
+}
+
+// ForegroundMainSessionTask brings a backgrounded session task to the foreground.
+// Swaps the foregroundedTaskID so the TUI shows this task's output.
+// Aligned with TS foregroundMainSessionTask.
+func (m *MainSessionTaskManager) ForegroundMainSessionTask(taskID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.taskFramework != nil {
+		t, ok := m.taskFramework.GetTask(taskID)
+		if !ok {
+			return fmt.Errorf("session task %q not found", taskID)
+		}
+		if t.Status != AgentStatusRunning && t.Status != AgentStatusPending {
+			return fmt.Errorf("session task %q is not running (status: %s)", taskID, t.Status)
+		}
+		t.IsBackgrounded = false
+	}
+
+	m.foregroundedTaskID = taskID
+	return nil
+}
+
+// GetForegroundedTaskID returns the currently-foregrounded session task ID.
+func (m *MainSessionTaskManager) GetForegroundedTaskID() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.foregroundedTaskID
+}

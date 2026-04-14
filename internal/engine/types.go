@@ -367,6 +367,15 @@ type EngineConfig struct {
 	// StopTask, if non-nil, stops a background task or async agent by ID.
 	// This is injected into tool execution context for TaskStop.
 	StopTask func(taskID string) error `json:"-"`
+
+	// CacheSafe marks that the prompt is designed for prompt caching
+	// (e.g. fork subagents that share parent history).
+	CacheSafe bool `json:"cache_safe,omitempty"`
+
+	// OmitClaudeMd skips injecting CLAUDE.md content into the system prompt.
+	// Used by agents that have their own specialized prompts and don't need
+	// project-level instructions.
+	OmitClaudeMd bool `json:"omit_claude_md,omitempty"`
 }
 
 // QuerySource describes the origin of a query (for compaction skip decisions).
