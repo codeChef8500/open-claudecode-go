@@ -157,8 +157,7 @@ open-claudecode-go/
 ### 构建与运行
 
 ```bash
-git clone https://github.com/wall-ai/agent-engine.git
-cd agent-engine
+git clone https://github.com/codeChef8500/open-claudecode-go.git
 
 # 构建
 make build

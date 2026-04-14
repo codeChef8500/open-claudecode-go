@@ -157,8 +157,7 @@ open-claudecode-go/
 ### Build & Run
 
 ```bash
-git clone https://github.com/wall-ai/agent-engine.git
-cd agent-engine
+git clone https://github.com/codeChef8500/open-claudecode-go.git
 
 # Build
 make build
