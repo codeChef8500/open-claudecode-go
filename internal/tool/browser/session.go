@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
+	"github.com/go-rod/rod/lib/launcher/flags"
 	"github.com/go-rod/rod/lib/proto"
 	"github.com/go-rod/stealth"
 	"github.com/google/uuid"
@@ -97,6 +98,7 @@ type BrowserSession struct {
 
 	// HTTP dual-mode client
 	httpClient *http.Client
+	tlsClient  *TLSClient // TLS fingerprint-impersonating client (Phase 3)
 
 	// IFrame context — when non-nil, operations target this frame
 	iframeCtx *rod.Page
@@ -113,6 +115,15 @@ type BrowserSession struct {
 
 	// User agent (real detected)
 	realUA string
+
+	// Browser fingerprint for consistent header generation
+	fingerprint *BrowserFingerprint
+
+	// Proxy rotation (Phase 5)
+	proxyRotator *ProxyRotator
+
+	// Resource blocking (Phase 6)
+	resourceBlocker *ResourceBlocker
 
 	// CDP connection mode
 	isCDP        bool
@@ -225,19 +236,17 @@ func (sm *SessionManager) CreateSession(ctx context.Context, in *Input) (*Browse
 			l = l.Set("ignore-certificate-errors", "")
 		}
 
-		// V7: Anti-detection launcher flags — critical for avoiding Google CAPTCHA
-		l = l.Set("disable-blink-features", "AutomationControlled")
-		l = l.Set("disable-features", "IsolateOrigins,site-per-process,TranslateUI")
-		l = l.Set("disable-infobars", "")
-		l = l.Set("disable-dev-shm-usage", "")
-		l = l.Set("no-first-run", "")
-		l = l.Set("no-default-browser-check", "")
-		l = l.Set("disable-popup-blocking", "")
-		l = l.Set("disable-background-networking", "false")
-		l = l.Set("enable-features", "NetworkService,NetworkServiceInProcess")
-		l = l.Set("password-store", "basic")
-		l = l.Set("use-mock-keychain", "")
-		l = l.Delete("enable-automation")
+		// Anti-detection launcher flags — ported from Scrapling STEALTH_ARGS + DEFAULT_ARGS
+		for flag, val := range stealthLauncherFlags {
+			l = l.Set(flags.Flag(flag), val)
+		}
+		for _, flag := range harmfulFlags {
+			l = l.Delete(flags.Flag(flag))
+		}
+		// Conditional stealth flags from input options
+		for flag, val := range ConditionalStealthFlags(in.BlockWebRTC, in.HideCanvas, in.DisableWebGL) {
+			l = l.Set(flags.Flag(flag), val)
+		}
 
 		controlURL, err := l.Launch()
 		if err != nil {
@@ -285,6 +294,16 @@ func (sm *SessionManager) CreateSession(ctx context.Context, in *Input) (*Browse
 	// Detect and clean User-Agent
 	ua := detectAndCleanUA(page)
 
+	// Generate browser fingerprint for consistent identity
+	fp := GenerateFingerprint("chrome")
+	// Override UA with fingerprint's UA for consistency
+	if fp.UserAgent != "" {
+		_ = proto.NetworkSetUserAgentOverride{UserAgent: fp.UserAgent}.Call(page)
+		ua = fp.UserAgent
+	}
+	// Inject navigator property overrides (platform, userAgentData, etc.)
+	_, _ = page.EvalOnNewDocument(fp.NavigatorOverrideJS())
+
 	sessionID := uuid.New().String()[:8]
 	tabID := uuid.New().String()[:8]
 
@@ -292,25 +311,69 @@ func (sm *SessionManager) CreateSession(ctx context.Context, in *Input) (*Browse
 
 	dialogCtx, dialogCancel := context.WithCancel(context.Background())
 
+	// Create TLS client if TLS impersonation is requested
+	var tlsClient *TLSClient
+	if in.TLSImpersonate != "" {
+		profile := ResolveTLSProfile(in.TLSImpersonate)
+		tlsClient = NewTLSClient(profile, jar, 30*time.Second)
+		slog.Info("browser: TLS impersonation enabled", slog.String("profile", string(profile)))
+	}
+
+	// Create proxy rotator if multiple proxies provided (Phase 5)
+	var proxyRot *ProxyRotator
+	if len(in.Proxies) > 0 {
+		var proxyCfgs []ProxyConfig
+		for _, p := range in.Proxies {
+			cfg, err := ParseProxyString(p)
+			if err != nil {
+				slog.Warn("browser: invalid proxy, skipping", slog.String("proxy", p), slog.Any("err", err))
+				continue
+			}
+			proxyCfgs = append(proxyCfgs, cfg)
+		}
+		if len(proxyCfgs) > 0 {
+			strategy := CyclicRotation
+			if strings.EqualFold(in.ProxyStrategy, "random") {
+				strategy = RandomRotation
+			}
+			proxyRot, _ = NewProxyRotator(proxyCfgs, strategy)
+			slog.Info("browser: proxy rotation enabled", slog.Int("count", len(proxyCfgs)), slog.String("strategy", in.ProxyStrategy))
+		}
+	}
+
+	// Create resource blocker if any blocking options set (Phase 6)
+	var resBlocker *ResourceBlocker
+	if in.DisableResources || len(in.BlockedDomains) > 0 || in.BlockAds {
+		resBlocker = NewResourceBlocker(in.DisableResources, in.BlockedDomains, in.BlockAds)
+		slog.Info("browser: resource blocking enabled",
+			slog.Bool("resources", in.DisableResources),
+			slog.Bool("ads", in.BlockAds),
+			slog.Int("customDomains", len(in.BlockedDomains)))
+	}
+
 	session := &BrowserSession{
-		ID:            sessionID,
-		CreatedAt:     time.Now().UTC(),
-		LastUsed:      time.Now().UTC(),
-		Headless:      headless,
-		browser:       browser,
-		pages:         map[string]*rod.Page{tabID: page},
-		activeTab:     tabID,
-		autoAlert:     true,
-		cancelDialogs: dialogCancel,
-		downloads:     make(map[string]*DownloadMission),
-		routes:        make(map[string]*RouteEntry),
-		extraHeaders:  make(map[string]string),
-		loadMode:      "normal",
-		httpClient:    &http.Client{Jar: jar, Timeout: 30 * time.Second},
-		actionsState:  ActionsState{},
-		realUA:        ua,
-		isCDP:         isCDP,
-		isPersistent:  in.UserDataDir != "",
+		ID:              sessionID,
+		CreatedAt:       time.Now().UTC(),
+		LastUsed:        time.Now().UTC(),
+		Headless:        headless,
+		browser:         browser,
+		pages:           map[string]*rod.Page{tabID: page},
+		activeTab:       tabID,
+		autoAlert:       true,
+		cancelDialogs:   dialogCancel,
+		downloads:       make(map[string]*DownloadMission),
+		routes:          make(map[string]*RouteEntry),
+		extraHeaders:    make(map[string]string),
+		loadMode:        "normal",
+		httpClient:      &http.Client{Jar: jar, Timeout: 30 * time.Second},
+		tlsClient:       tlsClient,
+		actionsState:    ActionsState{},
+		realUA:          ua,
+		fingerprint:     &fp,
+		proxyRotator:    proxyRot,
+		resourceBlocker: resBlocker,
+		isCDP:           isCDP,
+		isPersistent:    in.UserDataDir != "",
 	}
 
 	// Set up dialog handler (blocks in goroutine until context canceled)
@@ -415,6 +478,9 @@ func (s *BrowserSession) close() error {
 
 	if s.httpClient != nil {
 		s.httpClient.CloseIdleConnections()
+	}
+	if s.tlsClient != nil {
+		s.tlsClient.CloseIdleConnections()
 	}
 
 	for _, p := range s.pages {

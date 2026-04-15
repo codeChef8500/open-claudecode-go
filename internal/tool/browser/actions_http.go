@@ -33,6 +33,10 @@ func (t *BrowserTool) doHTTPGet(in *Input) string {
 	if in.URL == "" {
 		return "Error: url is required"
 	}
+	// Route through TLS client when available (Phase 3)
+	if s.tlsClient != nil {
+		return doTLSRequest(s, "GET", in.URL, "", in.HTTPHeaders)
+	}
 	return doHTTPRequest(s, "GET", in.URL, "", in.HTTPHeaders)
 }
 
@@ -43,6 +47,10 @@ func (t *BrowserTool) doHTTPPost(in *Input) string {
 	}
 	if in.URL == "" {
 		return "Error: url is required"
+	}
+	// Route through TLS client when available (Phase 3)
+	if s.tlsClient != nil {
+		return doTLSRequest(s, "POST", in.URL, in.HTTPBody, in.HTTPHeaders)
 	}
 	return doHTTPRequest(s, "POST", in.URL, in.HTTPBody, in.HTTPHeaders)
 }
@@ -105,11 +113,24 @@ func (t *BrowserTool) doHTTPToBrowserCookies(in *Input) string {
 func doHTTPRequest(s *BrowserSession, method, rawURL, body string, headers map[string]string) string {
 	s.mu.RLock()
 	client := s.httpClient
+	fp := s.fingerprint
+	rotator := s.proxyRotator
 	extraHeaders := make(map[string]string)
 	for k, v := range s.extraHeaders {
 		extraHeaders[k] = v
 	}
 	s.mu.RUnlock()
+
+	// Apply proxy rotation if available
+	if rotator != nil {
+		proxy := rotator.GetProxy()
+		proxyURL, _ := url.Parse(proxy.ProxyURL())
+		if proxyURL != nil {
+			if t, ok := client.Transport.(*http.Transport); ok {
+				t.Proxy = http.ProxyURL(proxyURL)
+			}
+		}
+	}
 
 	var bodyReader io.Reader
 	if body != "" {
@@ -121,11 +142,15 @@ func doHTTPRequest(s *BrowserSession, method, rawURL, body string, headers map[s
 		return fmt.Sprintf("HTTP request creation failed: %v", err)
 	}
 
-	// Apply session extra headers
+	// Apply fingerprint headers first (baseline identity)
+	if fp != nil {
+		fp.ApplyToRequest(req)
+	}
+	// Apply session extra headers (override fingerprint if set)
 	for k, v := range extraHeaders {
 		req.Header.Set(k, v)
 	}
-	// Apply per-request headers
+	// Apply per-request headers (highest priority)
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

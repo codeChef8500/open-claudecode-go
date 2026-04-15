@@ -358,6 +358,20 @@ type Input struct {
 	// --- Drag file ---
 	DragFiles []string `json:"drag_files,omitempty"`
 	DragText  string   `json:"drag_text,omitempty"`
+
+	// --- Stealth options (Phase 1) ---
+	BlockWebRTC  bool `json:"block_webrtc,omitempty"`
+	HideCanvas   bool `json:"hide_canvas,omitempty"`
+	DisableWebGL bool `json:"disable_webgl,omitempty"`
+
+	// --- Proxy rotation (Phase 5) ---
+	Proxies       []string `json:"proxies,omitempty"`
+	ProxyStrategy string   `json:"proxy_strategy,omitempty"`
+
+	// --- Resource blocking (Phase 6) ---
+	DisableResources bool     `json:"disable_resources,omitempty"`
+	BlockedDomains   []string `json:"blocked_domains,omitempty"`
+	BlockAds         bool     `json:"block_ads,omitempty"`
 }
 
 // CookieParam represents a single cookie to set.
@@ -453,7 +467,15 @@ func inputSchema() json.RawMessage {
 		"google_auto_consent":{"type":"boolean","description":"Auto-handle Google consent page during navigate (default false)."},
 		"navigate_retry":{"type":"integer","description":"Number of navigate retries on failure (default 0)."},
 		"navigate_retry_interval":{"type":"integer","description":"Retry interval in ms (default 2000)."},
-		"user_data_dir":{"type":"string","description":"Chrome user data dir for persistent profile (reuse logged-in sessions)."}
+		"user_data_dir":{"type":"string","description":"Chrome user data dir for persistent profile (reuse logged-in sessions)."},
+		"block_webrtc":{"type":"boolean","description":"Block WebRTC to prevent IP leaks (default false)."},
+		"hide_canvas":{"type":"boolean","description":"Add canvas fingerprinting noise (default false)."},
+		"disable_webgl":{"type":"boolean","description":"Disable WebGL to prevent GPU fingerprinting (default false)."},
+		"proxies":{"type":"array","items":{"type":"string"},"description":"List of proxy URLs for rotation (http/socks5). First proxy used for browser."},
+		"proxy_strategy":{"type":"string","description":"Proxy rotation strategy: cyclic (default) or random."},
+		"disable_resources":{"type":"boolean","description":"Block fonts/images/media/stylesheets for speed (default false)."},
+		"blocked_domains":{"type":"array","items":{"type":"string"},"description":"Custom domains to block (subdomains matched automatically)."},
+		"block_ads":{"type":"boolean","description":"Block known ad/tracker domains (default false)."}
 	},
 	"required": ["action"]
 }`)
