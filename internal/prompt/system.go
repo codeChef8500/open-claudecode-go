@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/wall-ai/agent-engine/internal/prompt/sysprompt"
 	"github.com/wall-ai/agent-engine/internal/tool"
 )
 
@@ -35,6 +36,35 @@ type BuildOptions struct {
 	CompanionSpecies   string // companion species (for intro text)
 	AutoMemoryPrompt   string // auto-memory system prompt (overrides MemoryContent)
 	TeamMemoryEnabled  bool   // team memory is active
+
+	// ── V2 fields (new sysprompt.GetSystemPrompt path) ──────────────
+	UseNewPromptBuilder    bool   // opt-in to V2 builder
+	Model                  string // model ID for env info + cutoff
+	IsAnt                  bool
+	LanguagePreference     string
+	OutputStyleName        string
+	OutputStylePrompt      string
+	KeepCodingInstructions bool
+
+	// MCP
+	MCPClients           []sysprompt.MCPClientInfo
+	MCPInstructionsDelta bool
+
+	// Scratchpad
+	ScratchpadEnabled bool
+	ScratchpadDir     string
+
+	// FRC (Function Result Clearing)
+	FRCEnabled      bool
+	FRCModelSupport bool
+	FRCKeepRecent   int
+
+	// Proactive
+	ProactiveActive bool
+	ProactiveOpts   sysprompt.ProactiveOpts
+
+	// Cache
+	UseGlobalCacheScope bool
 }
 
 // BuiltSystemPrompt is the result of BuildEffectiveSystemPrompt.
