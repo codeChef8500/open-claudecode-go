@@ -21,6 +21,10 @@ type StreamingToolExecutor struct {
 	executor       *ToolExecutor
 	maxConcurrency int
 	eventSink      func(StreamEvent)
+
+	// mu protects discarded flag (for model fallback cancel).
+	mu        sync.Mutex
+	discarded bool
 }
 
 // NewStreamingToolExecutor creates a streaming executor.
@@ -152,6 +156,23 @@ func (se *StreamingToolExecutor) ExecuteWithProgress(ctx context.Context, req *T
 	close(done)
 
 	return result
+}
+
+// Discard marks the executor as discarded, signaling that any pending or future
+// results should be ignored. Used when a model fallback occurs mid-stream.
+// TS anchor: StreamingToolExecutor.ts:discard
+func (se *StreamingToolExecutor) Discard() {
+	se.mu.Lock()
+	defer se.mu.Unlock()
+	se.discarded = true
+	slog.Debug("streaming_tool_executor: discarded")
+}
+
+// IsDiscarded reports whether this executor has been discarded.
+func (se *StreamingToolExecutor) IsDiscarded() bool {
+	se.mu.Lock()
+	defer se.mu.Unlock()
+	return se.discarded
 }
 
 // (ProgressData is defined in types.go)

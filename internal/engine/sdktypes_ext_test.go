@@ -8,17 +8,17 @@ import (
 func TestSDKResultMessage_JSON(t *testing.T) {
 	sr := "end_turn"
 	msg := &SDKResultMessage{
-		Type:         SDKMsgResult,
-		Subtype:      SDKResultSuccess,
-		DurationMs:   1234,
+		Type:          SDKMsgResult,
+		Subtype:       SDKResultSuccess,
+		DurationMs:    1234,
 		DurationAPIMs: 900,
-		IsError:      false,
-		NumTurns:     3,
-		Result:       "Done",
-		StopReason:   &sr,
-		TotalCostUSD: 0.05,
-		UUID:         "test-uuid",
-		SessionID:    "sess-1",
+		IsError:       false,
+		NumTurns:      3,
+		Result:        "Done",
+		StopReason:    &sr,
+		TotalCostUSD:  0.05,
+		UUID:          "test-uuid",
+		SessionID:     "sess-1",
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -63,11 +63,11 @@ func TestSDKResultError_JSON(t *testing.T) {
 func TestSDKSystemInit_JSON(t *testing.T) {
 	msg := NewSDKSystemInit("sess-2", SDKSystemInitMessage{
 		ClaudeCodeVersion: "1.0.0",
-		CWD:              "/home/test",
-		Model:            "claude-sonnet-4-6",
-		Tools:            []string{"Bash", "Read"},
-		PermissionMode:   "default",
-		OutputStyle:      "concise",
+		CWD:               "/home/test",
+		Model:             "claude-sonnet-4-6",
+		Tools:             []string{"Bash", "Read"},
+		PermissionMode:    "default",
+		OutputStyle:       "concise",
 	})
 	if msg.Type != SDKMsgSystem {
 		t.Errorf("type = %s, want system", msg.Type)
@@ -227,5 +227,164 @@ func TestSDKResultSubtypeConstants(t *testing.T) {
 		if string(got) != want {
 			t.Errorf("%s != %s", got, want)
 		}
+	}
+}
+
+// ── P7.T1 tests for TS-aligned message types ────────────────────────────
+
+func TestSDKAssistantTurnMessage_JSON(t *testing.T) {
+	msg := NewSDKAssistantTurn("sess-at", map[string]interface{}{"content": "hello"}, nil)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded SDKAssistantTurnMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Type != SDKMsgAssistant {
+		t.Errorf("type = %s, want assistant", decoded.Type)
+	}
+	if decoded.SessionID != "sess-at" {
+		t.Errorf("session_id = %s, want sess-at", decoded.SessionID)
+	}
+	if decoded.UUID == "" {
+		t.Error("uuid should not be empty")
+	}
+}
+
+func TestSDKAssistantTurnMessage_WithError(t *testing.T) {
+	ptid := "tu-parent"
+	msg := &SDKAssistantTurnMessage{
+		Type:            SDKMsgAssistant,
+		Message:         nil,
+		ParentToolUseID: &ptid,
+		Error:           SDKErrRateLimit,
+		UUID:            "test-uuid",
+		SessionID:       "sess-err",
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded SDKAssistantTurnMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Error != SDKErrRateLimit {
+		t.Errorf("error = %s, want rate_limit", decoded.Error)
+	}
+	if decoded.ParentToolUseID == nil || *decoded.ParentToolUseID != "tu-parent" {
+		t.Error("parent_tool_use_id should be tu-parent")
+	}
+}
+
+func TestSDKUserTurnMessage_JSON(t *testing.T) {
+	msg := NewSDKUserTurn("sess-ut", "hello user", nil)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded SDKUserTurnMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Type != SDKMsgUser {
+		t.Errorf("type = %s, want user", decoded.Type)
+	}
+}
+
+func TestSDKUserTurnMessage_AllFields(t *testing.T) {
+	ptid := "tu-tool"
+	msg := &SDKUserTurnMessage{
+		Type:            SDKMsgUser,
+		Message:         map[string]interface{}{"role": "user"},
+		ParentToolUseID: &ptid,
+		IsSynthetic:     true,
+		ToolUseResult:   "result data",
+		Priority:        SDKUserPriorityNow,
+		Timestamp:       "2026-04-20T10:00:00Z",
+		UUID:            "user-uuid",
+		SessionID:       "sess-af",
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded SDKUserTurnMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !decoded.IsSynthetic {
+		t.Error("expected isSynthetic=true")
+	}
+	if decoded.Priority != SDKUserPriorityNow {
+		t.Errorf("priority = %s, want now", decoded.Priority)
+	}
+	if decoded.Timestamp != "2026-04-20T10:00:00Z" {
+		t.Errorf("timestamp = %s", decoded.Timestamp)
+	}
+}
+
+func TestSDKUserReplayMessage_JSON(t *testing.T) {
+	msg := NewSDKUserReplay("sess-rp", "replay-uuid", "replayed content", nil)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded SDKUserReplayMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Type != SDKMsgUser {
+		t.Errorf("type = %s, want user", decoded.Type)
+	}
+	if !decoded.IsReplay {
+		t.Error("expected isReplay=true")
+	}
+	if decoded.UUID != "replay-uuid" {
+		t.Errorf("uuid = %s, want replay-uuid", decoded.UUID)
+	}
+	if decoded.SessionID != "sess-rp" {
+		t.Errorf("session_id = %s, want sess-rp", decoded.SessionID)
+	}
+}
+
+func TestSDKStreamEventMessage_JSON(t *testing.T) {
+	ptid := "tu-stream"
+	msg := NewSDKStreamEvent("sess-se", map[string]interface{}{"type": "content_block_delta"}, &ptid)
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded SDKStreamEventMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Type != SDKMsgStreamEvent {
+		t.Errorf("type = %s, want stream_event", decoded.Type)
+	}
+	if decoded.ParentToolUseID == nil || *decoded.ParentToolUseID != "tu-stream" {
+		t.Error("parent_tool_use_id should be tu-stream")
+	}
+}
+
+func TestSDKUserPriorityConstants(t *testing.T) {
+	checks := map[SDKUserPriority]string{
+		SDKUserPriorityNow:   "now",
+		SDKUserPriorityNext:  "next",
+		SDKUserPriorityLater: "later",
+	}
+	for got, want := range checks {
+		if string(got) != want {
+			t.Errorf("%s != %s", got, want)
+		}
+	}
+}
+
+func TestSDKMsgToolUseSummaryConstant(t *testing.T) {
+	// SDKMsgToolUseSummary defined in sdktypes.go, verified here for completeness.
+	if string(SDKMsgToolUseSummary) != "tool_use_summary" {
+		t.Errorf("SDKMsgToolUseSummary = %s, want tool_use_summary", SDKMsgToolUseSummary)
 	}
 }

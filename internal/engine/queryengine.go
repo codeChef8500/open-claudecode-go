@@ -22,7 +22,7 @@ type QueryEngine struct {
 	abortCtx          context.Context
 	abortCancel       context.CancelFunc
 	permissionDenials []SDKPermDenial
-	totalUsage        *UsageStats
+	totalUsage        NonNullableUsage
 	readFileState     *FileStateCache
 	sessionID         string
 
@@ -37,6 +37,9 @@ type QueryEngine struct {
 
 	// hasHandledOrphanedPermission is set after the first turn processes orphaned permission.
 	hasHandledOrphanedPermission bool
+
+	// persister records messages to durable storage when PersistSession is true.
+	persister *SessionPersister
 
 	mu sync.Mutex // guards mutableMessages
 }
@@ -69,17 +72,23 @@ func NewQueryEngine(cfg *QueryEngineConfig) *QueryEngine {
 		readFileState = NewFileStateCache(200)
 	}
 
+	var persister *SessionPersister
+	if cfg.PersistSession && cfg.SessionWriter != nil {
+		persister = NewSessionPersister(cfg.SessionWriter, sessionID)
+	}
+
 	return &QueryEngine{
 		config:                  cfg,
 		mutableMessages:         initialMessages,
 		abortCtx:                abortCtx,
 		abortCancel:             abortCancel,
 		permissionDenials:       make([]SDKPermDenial, 0),
-		totalUsage:              &UsageStats{},
+		totalUsage:              EmptyUsage(),
 		readFileState:           readFileState,
 		sessionID:               sessionID,
 		discoveredSkillNames:    make(map[string]bool),
 		loadedNestedMemoryPaths: make(map[string]bool),
+		persister:               persister,
 	}
 }
 
@@ -114,30 +123,68 @@ func (qe *QueryEngine) SubmitMessage(
 	go func() {
 		defer close(out)
 
-		// Clear turn-scoped state.
+		// ── Step 1: Clear turn-scoped state (TS L238) ──────────────────
 		qe.mu.Lock()
 		qe.discoveredSkillNames = make(map[string]bool)
 		qe.mu.Unlock()
 
 		startTime := time.Now()
-
 		cfg := qe.config
+
+		// ── Step 2: Wrap canUseTool for denial tracking (TS L244-271) ──
+		permTracker := NewPermDenialTracker()
+		var wrappedCanUseTool CanUseToolFn
+		if cfg.CanUseTool != nil {
+			wrappedCanUseTool = permTracker.WrapCanUseTool(cfg.CanUseTool)
+		}
+
+		// ── Step 3: Resolve model (TS L274-276) ────────────────────────
+		initialMainLoopModel := cfg.UserSpecifiedModel
+		if initialMainLoopModel == "" {
+			initialMainLoopModel = GetRuntimeMainLoopModel("claude-sonnet-4-6")
+		}
+
 		maxTurns := cfg.MaxTurns
 		if maxTurns <= 0 {
 			maxTurns = 100
 		}
 
-		// Determine the model.
-		mainLoopModel := cfg.UserSpecifiedModel
-		if mainLoopModel == "" {
-			mainLoopModel = "claude-sonnet-4-6"
+		// ── Step 4: Build system prompt (TS L284-325) ──────────────────
+		// (Delegated to SystemPromptFetcher if set; otherwise uses defaults.)
+
+		// ── Step 5: Build initial ProcessUserInputContext (TS L335-395) ─
+		setMessages := func(fn func([]*Message) []*Message) {
+			qe.mu.Lock()
+			defer qe.mu.Unlock()
+			qe.mutableMessages = fn(qe.mutableMessages)
 		}
 
-		// Emit system init message.
-		initMsg := qe.buildSystemInitMessage(mainLoopModel)
-		qe.emit(ctx, out, initMsg)
+		tuc := &ToolUseContext{
+			Options: &ToolUseOptions{
+				Tools:                   cfg.Tools,
+				MainLoopModel:           initialMainLoopModel,
+				IsNonInteractiveSession: true,
+				AppendSystemPrompt:      cfg.AppendSystemPrompt,
+			},
+			AbortCtx:          qe.abortCtx,
+			AbortCancel:       qe.abortCancel,
+			GetAppState:       cfg.GetAppState,
+			SetAppState:       cfg.SetAppState,
+			ReadFileState:     qe.readFileState,
+			HandleElicitation: cfg.HandleElicitation,
+		}
 
-		// Create the user message from the prompt.
+		puic := NewProcessUserInputContext(cfg, qe.mutableMessages, setMessages, tuc)
+
+		// ── Step 6: Handle orphaned permission (TS L397-408) ───────────
+		if cfg.OrphanedPermission != nil && !qe.hasHandledOrphanedPermission {
+			qe.hasHandledOrphanedPermission = true
+			// Orphaned permission handling: re-run the permission check for
+			// the tool call that was pending when the prior session ended.
+			// Full handler implementation deferred to P9; here we mark it handled.
+		}
+
+		// ── Step 7: Create user message from prompt (TS L410-431) ──────
 		msgUUID := ""
 		if opts != nil && opts.UUID != "" {
 			msgUUID = opts.UUID
@@ -165,37 +212,21 @@ func (qe *QueryEngine) SubmitMessage(
 		qe.mutableMessages = append(qe.mutableMessages, userMsg)
 		qe.mu.Unlock()
 
-		// Build ToolUseContext for the query loop.
-		tuc := &ToolUseContext{
-			Options: &ToolUseOptions{
-				Tools:                   cfg.Tools,
-				MainLoopModel:           mainLoopModel,
-				IsNonInteractiveSession: true,
-				AppendSystemPrompt:      cfg.AppendSystemPrompt,
-			},
-			AbortCtx:          qe.abortCtx,
-			AbortCancel:       qe.abortCancel,
-			GetAppState:       cfg.GetAppState,
-			SetAppState:       cfg.SetAppState,
-			ReadFileState:     qe.readFileState,
-			HandleElicitation: cfg.HandleElicitation,
-		}
+		// ── Step 8: Resolve final model (TS L488) ──────────────────────
+		mainLoopModel := initialMainLoopModel
 
-		// Build ProcessUserInputContext.
-		puic := NewProcessUserInputContext(cfg, qe.mutableMessages, func(fn func([]*Message) []*Message) {
-			qe.mu.Lock()
-			defer qe.mu.Unlock()
-			qe.mutableMessages = fn(qe.mutableMessages)
-		}, tuc)
+		// ── Step 9: Emit system/init message (TS L540-551) ─────────────
+		initMsg := qe.buildSystemInitMessage(mainLoopModel)
+		qe.emit(ctx, out, initMsg)
 
-		// ── Query loop delegation ───────────────────────────────────────────
-		// The actual query loop is in queryloop.go. Here we invoke it and
-		// forward yielded messages to the output channel.
-		turnCount := 1
-		var lastStopReason string
+		// ── Query loop delegation (TS L675-968) ────────────────────────
+		ds := newDispatchState(mainLoopModel, startTime)
 
 		queryCtx, queryCancel := context.WithCancel(ctx)
 		defer queryCancel()
+
+		// Override canUseTool in the loop input with the wrapped version.
+		_ = wrappedCanUseTool // Used by query loop via tuc when wired
 
 		loopCh := qe.runQueryLoop(queryCtx, &queryLoopInput{
 			messages:     qe.mutableMessages,
@@ -207,75 +238,50 @@ func (qe *QueryEngine) SubmitMessage(
 			taskBudget:   cfg.TaskBudget,
 		})
 
+		earlyExit := false
 		for msg := range loopCh {
 			if msg == nil {
 				continue
 			}
 
-			// Track usage from stream events.
-			if se, ok := msg.(*StreamEvent); ok {
-				if se.Usage != nil {
-					qe.totalUsage = accumulateUsageStats(qe.totalUsage, se.Usage)
-				}
+			dr := qe.dispatchQueryMessage(msg, ds, cfg)
+
+			// Yield all SDK messages from dispatch.
+			for _, y := range dr.Yielded {
+				qe.emit(ctx, out, y)
 			}
 
-			// Track assistant message stop reasons.
-			if m, ok := msg.(*Message); ok {
-				if m.Role == RoleAssistant && m.StopReason != "" {
-					lastStopReason = m.StopReason
-				}
-				if m.Role == RoleUser {
-					turnCount++
-				}
-				qe.mu.Lock()
-				qe.mutableMessages = append(qe.mutableMessages, m)
-				qe.mu.Unlock()
+			// Early return (max_turns, etc.)
+			if dr.Action == dispatchReturn && dr.Terminal != nil {
+				qe.emit(ctx, out, dr.Terminal)
+				earlyExit = true
+				break
 			}
 
-			qe.emit(ctx, out, msg)
+			// Budget check (TS L971-1002)
+			if budgetErr := qe.checkBudgetExceeded(ds, cfg); budgetErr != nil {
+				qe.emit(ctx, out, budgetErr)
+				earlyExit = true
+				break
+			}
 
-			// Budget check.
-			if cfg.MaxBudgetUSD != nil && qe.totalCostUSD() >= *cfg.MaxBudgetUSD {
-				errResult := NewSDKResultError(
-					qe.sessionID,
-					SDKResultErrorMaxBudgetUSD,
-					[]string{"Reached maximum budget"},
-					int(time.Since(startTime).Milliseconds()),
-					0, turnCount,
-					qe.totalCostUSD(),
-					qe.totalUsage,
-				)
-				qe.emit(ctx, out, errResult)
-				return
+			// Structured output retry limit (TS L1004-1048)
+			if soErr := qe.checkStructuredOutputRetryLimit(ds, cfg, msg); soErr != nil {
+				qe.emit(ctx, out, soErr)
+				earlyExit = true
+				break
 			}
 		}
 
-		// ── Determine final result ──────────────────────────────────────
-		durationMs := int(time.Since(startTime).Milliseconds())
-
-		if !qe.isResultSuccessful(lastStopReason) {
-			errResult := NewSDKResultError(
-				qe.sessionID,
-				SDKResultErrorDuringExecution,
-				[]string{"Execution completed without successful result"},
-				durationMs, 0, turnCount,
-				qe.totalCostUSD(),
-				qe.totalUsage,
-			)
-			qe.emit(ctx, out, errResult)
+		if earlyExit {
+			qe.permissionDenials = append(qe.permissionDenials, permTracker.Denials()...)
 			return
 		}
 
-		textResult := qe.extractTextResult()
-		successResult := NewSDKResultSuccess(
-			qe.sessionID,
-			textResult,
-			durationMs, 0, turnCount,
-			qe.totalCostUSD(),
-			qe.totalUsage,
-			lastStopReason,
-		)
-		qe.emit(ctx, out, successResult)
+		// ── Finalize result (TS L1050-1155) ─────────────────────────────
+		qe.permissionDenials = append(qe.permissionDenials, permTracker.Denials()...)
+		finalResult := qe.buildFinalResult(ds, cfg)
+		qe.emit(ctx, out, finalResult)
 	}()
 
 	return out
@@ -320,11 +326,13 @@ func (qe *QueryEngine) emit(ctx context.Context, ch chan<- interface{}, msg inte
 }
 
 func (qe *QueryEngine) buildSystemInitMessage(model string) *SDKSystemInitMessage {
+	// Tools — map through SdkCompatToolName (TS: sdkCompatToolName)
 	toolNames := make([]string, 0, len(qe.config.Tools))
 	for _, t := range qe.config.Tools {
-		toolNames = append(toolNames, t.Name())
+		toolNames = append(toolNames, SdkCompatToolName(t.Name()))
 	}
 
+	// MCP servers
 	mcpServers := make([]MCPServerStatus, 0, len(qe.config.MCPClients))
 	for _, c := range qe.config.MCPClients {
 		mcpServers = append(mcpServers, MCPServerStatus{
@@ -333,22 +341,81 @@ func (qe *QueryEngine) buildSystemInitMessage(model string) *SDKSystemInitMessag
 		})
 	}
 
+	// Slash commands — filter by UserInvocable (TS: c.userInvocable !== false)
+	slashCmds := make([]string, 0, len(qe.config.Commands))
+	for _, c := range qe.config.Commands {
+		if c.IsUserInvocable() {
+			slashCmds = append(slashCmds, c.Name)
+		}
+	}
+
+	// Agents
+	agents := make([]string, 0, len(qe.config.Agents))
+	for _, a := range qe.config.Agents {
+		agents = append(agents, a.Type)
+	}
+
+	// Skills — filter by UserInvocable
+	skills := make([]string, 0, len(qe.config.Skills))
+	for _, s := range qe.config.Skills {
+		if s.IsUserInvocable() {
+			skills = append(skills, s.Name)
+		}
+	}
+
+	// Plugins
+	plugins := make([]PluginInfo, 0, len(qe.config.Plugins))
+	for _, p := range qe.config.Plugins {
+		plugins = append(plugins, PluginInfo{
+			Name:   p.Name,
+			Path:   p.Path,
+			Source: p.Source,
+		})
+	}
+
+	// OutputStyle — fallback to "concise" (TS: DEFAULT_OUTPUT_STYLE_NAME)
+	outputStyle := qe.config.OutputStyle
+	if outputStyle == "" {
+		outputStyle = "concise"
+	}
+
+	// PermissionMode — fallback to "default"
+	permMode := qe.config.PermissionMode
+	if permMode == "" {
+		permMode = "default"
+	}
+
+	// Version — fallback to "0.1.0"
+	version := qe.config.Version
+	if version == "" {
+		version = "0.1.0"
+	}
+
+	// FastModeState (TS: getFastModeState(model, fastMode))
+	fastState := GetFastModeState(model, qe.config.FastMode)
+
 	return NewSDKSystemInit(qe.sessionID, SDKSystemInitMessage{
 		CWD:               qe.config.CWD,
 		Model:             model,
 		Tools:             toolNames,
 		MCPServers:        mcpServers,
-		PermissionMode:    "default",
-		OutputStyle:       "concise",
-		ClaudeCodeVersion: "0.1.0",
+		PermissionMode:    permMode,
+		OutputStyle:       outputStyle,
+		ClaudeCodeVersion: version,
+		SlashCommands:     slashCmds,
+		Agents:            agents,
+		Skills:            skills,
+		Plugins:           plugins,
+		APIKeySource:      qe.config.APIKeySource,
+		Betas:             qe.config.Betas,
+		FastModeState:     fastState,
 	})
 }
 
 func (qe *QueryEngine) totalCostUSD() float64 {
-	if qe.totalUsage == nil {
-		return 0
-	}
-	return qe.totalUsage.CostUSD
+	// Cost is tracked externally via model pricing; NonNullableUsage doesn't
+	// carry CostUSD directly. Return 0 for now; P9 wires calculateUSDCost.
+	return 0
 }
 
 func (qe *QueryEngine) isResultSuccessful(lastStopReason string) bool {
@@ -386,6 +453,14 @@ func (qe *QueryEngine) isResultSuccessful(lastStopReason string) bool {
 		}
 	}
 	return false
+}
+
+// persistMessage records a message to durable storage if persistence is enabled.
+// TS anchor: QueryEngine.ts recordTranscript(messages) calls.
+func (qe *QueryEngine) persistMessage(m *Message) {
+	if qe.persister != nil {
+		qe.persister.PersistMessage(m)
+	}
 }
 
 func (qe *QueryEngine) extractTextResult() string {

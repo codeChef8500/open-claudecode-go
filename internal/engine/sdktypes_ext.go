@@ -55,11 +55,11 @@ const (
 type SDKResultSubtype string
 
 const (
-	SDKResultSuccess                    SDKResultSubtype = "success"
-	SDKResultErrorDuringExecution       SDKResultSubtype = "error_during_execution"
-	SDKResultErrorMaxTurns              SDKResultSubtype = "error_max_turns"
-	SDKResultErrorMaxBudgetUSD          SDKResultSubtype = "error_max_budget_usd"
-	SDKResultErrorMaxStructuredRetries  SDKResultSubtype = "error_max_structured_output_retries"
+	SDKResultSuccess                   SDKResultSubtype = "success"
+	SDKResultErrorDuringExecution      SDKResultSubtype = "error_during_execution"
+	SDKResultErrorMaxTurns             SDKResultSubtype = "error_max_turns"
+	SDKResultErrorMaxBudgetUSD         SDKResultSubtype = "error_max_budget_usd"
+	SDKResultErrorMaxStructuredRetries SDKResultSubtype = "error_max_structured_output_retries"
 )
 
 // SDKSessionState enumerates session states.
@@ -80,27 +80,97 @@ const (
 	FastModeOn       FastModeState = "on"
 )
 
+// ── Assistant turn message ──────────────────────────────────────────────────
+// [P7.T1] TS anchor: coreSchemas.ts:SDKAssistantMessageSchema (L1347-1356)
+// Named SDKAssistantTurnMessage to avoid collision with legacy SDKAssistantMessage
+// in sdktypes.go (removed in P8.T6).
+
+// SDKAssistantTurnMessage is the TS-aligned top-level assistant message.
+type SDKAssistantTurnMessage struct {
+	Type            SDKMessageType               `json:"type"`    // "assistant"
+	Message         interface{}                  `json:"message"` // Anthropic API Message
+	ParentToolUseID *string                      `json:"parent_tool_use_id"`
+	Error           SDKAssistantMessageErrorType `json:"error,omitempty"`
+	UUID            string                       `json:"uuid"`
+	SessionID       string                       `json:"session_id"`
+}
+
+// ── User turn message ──────────────────────────────────────────────────────
+// [P7.T1] TS anchor: coreSchemas.ts:SDKUserMessageSchema (L1290-1295)
+
+// SDKUserPriority is the message delivery priority.
+type SDKUserPriority string
+
+const (
+	SDKUserPriorityNow   SDKUserPriority = "now"
+	SDKUserPriorityNext  SDKUserPriority = "next"
+	SDKUserPriorityLater SDKUserPriority = "later"
+)
+
+// SDKUserTurnMessage is the TS-aligned top-level user message.
+type SDKUserTurnMessage struct {
+	Type            SDKMessageType  `json:"type"`    // "user"
+	Message         interface{}     `json:"message"` // Anthropic API UserMessage
+	ParentToolUseID *string         `json:"parent_tool_use_id"`
+	IsSynthetic     bool            `json:"isSynthetic,omitempty"`
+	ToolUseResult   interface{}     `json:"tool_use_result,omitempty"`
+	Priority        SDKUserPriority `json:"priority,omitempty"`
+	Timestamp       string          `json:"timestamp,omitempty"`
+	UUID            string          `json:"uuid,omitempty"`
+	SessionID       string          `json:"session_id,omitempty"`
+}
+
+// ── User replay message ────────────────────────────────────────────────────
+// [P7.T1] TS anchor: coreSchemas.ts:SDKUserMessageReplaySchema (L1297-1303)
+
+// SDKUserReplayMessage extends SDKUserTurnMessage with required uuid/session_id
+// and the isReplay sentinel.
+type SDKUserReplayMessage struct {
+	Type            SDKMessageType  `json:"type"`    // "user"
+	Message         interface{}     `json:"message"` // Anthropic API UserMessage
+	ParentToolUseID *string         `json:"parent_tool_use_id"`
+	IsSynthetic     bool            `json:"isSynthetic,omitempty"`
+	ToolUseResult   interface{}     `json:"tool_use_result,omitempty"`
+	Priority        SDKUserPriority `json:"priority,omitempty"`
+	Timestamp       string          `json:"timestamp,omitempty"`
+	UUID            string          `json:"uuid"`
+	SessionID       string          `json:"session_id"`
+	IsReplay        bool            `json:"isReplay"` // always true
+}
+
+// ── Stream event (partial assistant) message ────────────────────────────────
+// [P7.T1] TS anchor: coreSchemas.ts:SDKPartialAssistantMessageSchema (L1496-1504)
+
+// SDKStreamEventMessage wraps raw SSE stream events from the Anthropic API.
+type SDKStreamEventMessage struct {
+	Type            SDKMessageType `json:"type"`  // "stream_event"
+	Event           interface{}    `json:"event"` // RawMessageStreamEvent
+	ParentToolUseID *string        `json:"parent_tool_use_id"`
+	UUID            string         `json:"uuid"`
+	SessionID       string         `json:"session_id"`
+}
+
 // ── Result messages ────────────────────────────────────────────────────────
 
 // SDKResultMessage is the union of success and error result messages.
 type SDKResultMessage struct {
-	Type               SDKMessageType   `json:"type"` // always "result"
-	Subtype            SDKResultSubtype `json:"subtype"`
-	DurationMs         int              `json:"duration_ms"`
-	DurationAPIMs      int              `json:"duration_api_ms"`
-	IsError            bool             `json:"is_error"`
-	NumTurns           int              `json:"num_turns"`
-	Result             string           `json:"result,omitempty"` // success only
-	StopReason         *string          `json:"stop_reason"`
-	TotalCostUSD       float64          `json:"total_cost_usd"`
-	Usage              interface{}      `json:"usage"`
-	ModelUsage         map[string]*ModelUsage `json:"modelUsage,omitempty"`
-	PermissionDenials  []SDKPermDenial  `json:"permission_denials"`
-	Errors             []string         `json:"errors,omitempty"` // error only
-	StructuredOutput   interface{}      `json:"structured_output,omitempty"`
-	FastModeState      FastModeState    `json:"fast_mode_state,omitempty"`
-	UUID               string           `json:"uuid"`
-	SessionID          string           `json:"session_id"`
+	Type              SDKMessageType         `json:"type"` // always "result"
+	Subtype           SDKResultSubtype       `json:"subtype"`
+	DurationMs        int                    `json:"duration_ms"`
+	DurationAPIMs     int                    `json:"duration_api_ms"`
+	IsError           bool                   `json:"is_error"`
+	NumTurns          int                    `json:"num_turns"`
+	Result            string                 `json:"result,omitempty"` // success only
+	StopReason        *string                `json:"stop_reason"`
+	TotalCostUSD      float64                `json:"total_cost_usd"`
+	Usage             interface{}            `json:"usage"`
+	ModelUsage        map[string]*ModelUsage `json:"modelUsage,omitempty"`
+	PermissionDenials []SDKPermDenial        `json:"permission_denials"`
+	Errors            []string               `json:"errors,omitempty"` // error only
+	StructuredOutput  interface{}            `json:"structured_output,omitempty"`
+	FastModeState     FastModeState          `json:"fast_mode_state,omitempty"`
+	UUID              string                 `json:"uuid"`
+	SessionID         string                 `json:"session_id"`
 }
 
 // ModelUsage tracks per-model usage stats.
@@ -117,33 +187,33 @@ type ModelUsage struct {
 
 // SDKPermDenial is the SDK-level permission denial record.
 type SDKPermDenial struct {
-	ToolName   string                 `json:"tool_name"`
-	ToolUseID  string                 `json:"tool_use_id"`
-	ToolInput  map[string]interface{} `json:"tool_input"`
+	ToolName  string                 `json:"tool_name"`
+	ToolUseID string                 `json:"tool_use_id"`
+	ToolInput map[string]interface{} `json:"tool_input"`
 }
 
 // ── System init message ────────────────────────────────────────────────────
 
 // SDKSystemInitMessage is the system/init envelope.
 type SDKSystemInitMessage struct {
-	Type             SDKMessageType   `json:"type"` // "system"
-	Subtype          SDKSystemSubtype `json:"subtype"` // "init"
-	Agents           []string         `json:"agents,omitempty"`
-	APIKeySource     string           `json:"apiKeySource"`
-	Betas            []string         `json:"betas,omitempty"`
-	ClaudeCodeVersion string          `json:"claude_code_version"`
-	CWD              string           `json:"cwd"`
-	Tools            []string         `json:"tools"`
-	MCPServers       []MCPServerStatus `json:"mcp_servers"`
-	Model            string           `json:"model"`
-	PermissionMode   string           `json:"permissionMode"`
-	SlashCommands    []string         `json:"slash_commands"`
-	OutputStyle      string           `json:"output_style"`
-	Skills           []string         `json:"skills"`
-	Plugins          []PluginInfo     `json:"plugins"`
-	FastModeState    FastModeState    `json:"fast_mode_state,omitempty"`
-	UUID             string           `json:"uuid"`
-	SessionID        string           `json:"session_id"`
+	Type              SDKMessageType    `json:"type"`    // "system"
+	Subtype           SDKSystemSubtype  `json:"subtype"` // "init"
+	Agents            []string          `json:"agents,omitempty"`
+	APIKeySource      string            `json:"apiKeySource"`
+	Betas             []string          `json:"betas,omitempty"`
+	ClaudeCodeVersion string            `json:"claude_code_version"`
+	CWD               string            `json:"cwd"`
+	Tools             []string          `json:"tools"`
+	MCPServers        []MCPServerStatus `json:"mcp_servers"`
+	Model             string            `json:"model"`
+	PermissionMode    string            `json:"permissionMode"`
+	SlashCommands     []string          `json:"slash_commands"`
+	OutputStyle       string            `json:"output_style"`
+	Skills            []string          `json:"skills"`
+	Plugins           []PluginInfo      `json:"plugins"`
+	FastModeState     FastModeState     `json:"fast_mode_state,omitempty"`
+	UUID              string            `json:"uuid"`
+	SessionID         string            `json:"session_id"`
 }
 
 // MCPServerStatus describes a connected MCP server.
@@ -244,14 +314,14 @@ type SDKHookResponseMessage struct {
 
 // SDKToolProgressMessage tracks tool execution progress.
 type SDKToolProgressMessage struct {
-	Type             SDKMessageType `json:"type"` // "tool_progress"
-	ToolUseID        string         `json:"tool_use_id"`
-	ToolName         string         `json:"tool_name"`
-	ParentToolUseID  *string        `json:"parent_tool_use_id"`
-	ElapsedTimeSecs  float64        `json:"elapsed_time_seconds"`
-	TaskID           string         `json:"task_id,omitempty"`
-	UUID             string         `json:"uuid"`
-	SessionID        string         `json:"session_id"`
+	Type            SDKMessageType `json:"type"` // "tool_progress"
+	ToolUseID       string         `json:"tool_use_id"`
+	ToolName        string         `json:"tool_name"`
+	ParentToolUseID *string        `json:"parent_tool_use_id"`
+	ElapsedTimeSecs float64        `json:"elapsed_time_seconds"`
+	TaskID          string         `json:"task_id,omitempty"`
+	UUID            string         `json:"uuid"`
+	SessionID       string         `json:"session_id"`
 }
 
 // ── Task messages ──────────────────────────────────────────────────────────
@@ -272,16 +342,16 @@ type SDKTaskStartedMessage struct {
 
 // SDKTaskProgressMessage carries incremental task progress.
 type SDKTaskProgressMessage struct {
-	Type        SDKMessageType   `json:"type"`
-	Subtype     SDKSystemSubtype `json:"subtype"` // "task_progress"
-	TaskID      string           `json:"task_id"`
-	ToolUseID   string           `json:"tool_use_id,omitempty"`
-	Description string           `json:"description"`
-	Usage       *TaskUsage       `json:"usage"`
-	LastToolName string          `json:"last_tool_name,omitempty"`
-	Summary     string           `json:"summary,omitempty"`
-	UUID        string           `json:"uuid"`
-	SessionID   string           `json:"session_id"`
+	Type         SDKMessageType   `json:"type"`
+	Subtype      SDKSystemSubtype `json:"subtype"` // "task_progress"
+	TaskID       string           `json:"task_id"`
+	ToolUseID    string           `json:"tool_use_id,omitempty"`
+	Description  string           `json:"description"`
+	Usage        *TaskUsage       `json:"usage"`
+	LastToolName string           `json:"last_tool_name,omitempty"`
+	Summary      string           `json:"summary,omitempty"`
+	UUID         string           `json:"uuid"`
+	SessionID    string           `json:"session_id"`
 }
 
 // SDKTaskNotificationMessage is emitted when a background task completes.
@@ -322,7 +392,7 @@ type SDKSessionStateChangedMessage struct {
 type SDKStatusMessage struct {
 	Type           SDKMessageType   `json:"type"`
 	Subtype        SDKSystemSubtype `json:"subtype"` // "status"
-	Status         *string          `json:"status"` // "compacting" or null
+	Status         *string          `json:"status"`  // "compacting" or null
 	PermissionMode string           `json:"permissionMode,omitempty"`
 	UUID           string           `json:"uuid"`
 	SessionID      string           `json:"session_id"`
@@ -332,11 +402,11 @@ type SDKStatusMessage struct {
 
 // SDKCompactBoundaryMessage is the full SDK compact boundary message.
 type SDKCompactBoundaryMessage struct {
-	Type            SDKMessageType    `json:"type"`
-	Subtype         SDKSystemSubtype  `json:"subtype"` // "compact_boundary"
-	CompactMetadata *CompactMetadata  `json:"compact_metadata"`
-	UUID            string            `json:"uuid"`
-	SessionID       string            `json:"session_id"`
+	Type            SDKMessageType   `json:"type"`
+	Subtype         SDKSystemSubtype `json:"subtype"` // "compact_boundary"
+	CompactMetadata *CompactMetadata `json:"compact_metadata"`
+	UUID            string           `json:"uuid"`
+	SessionID       string           `json:"session_id"`
 }
 
 // CompactMetadata carries detailed compaction info.
@@ -416,23 +486,23 @@ type SDKPromptSuggestionMessage struct {
 
 // SDKToolUseSummaryMessage is the SDK-level tool use summary.
 type SDKToolUseSummaryMessage struct {
-	Type                 SDKMessageType `json:"type"` // "tool_use_summary"
-	Summary              string         `json:"summary"`
-	PrecedingToolUseIDs  []string       `json:"preceding_tool_use_ids"`
-	UUID                 string         `json:"uuid"`
-	SessionID            string         `json:"session_id"`
+	Type                SDKMessageType `json:"type"` // "tool_use_summary"
+	Summary             string         `json:"summary"`
+	PrecedingToolUseIDs []string       `json:"preceding_tool_use_ids"`
+	UUID                string         `json:"uuid"`
+	SessionID           string         `json:"session_id"`
 }
 
 // ── Elicitation complete ───────────────────────────────────────────────────
 
 // SDKElicitationCompleteMessage is emitted when an MCP elicitation is done.
 type SDKElicitationCompleteMessage struct {
-	Type           SDKMessageType   `json:"type"`
-	Subtype        SDKSystemSubtype `json:"subtype"` // "elicitation_complete"
-	MCPServerName  string           `json:"mcp_server_name"`
-	ElicitationID  string           `json:"elicitation_id"`
-	UUID           string           `json:"uuid"`
-	SessionID      string           `json:"session_id"`
+	Type          SDKMessageType   `json:"type"`
+	Subtype       SDKSystemSubtype `json:"subtype"` // "elicitation_complete"
+	MCPServerName string           `json:"mcp_server_name"`
+	ElicitationID string           `json:"elicitation_id"`
+	UUID          string           `json:"uuid"`
+	SessionID     string           `json:"session_id"`
 }
 
 // ── Local command output ───────────────────────────────────────────────────

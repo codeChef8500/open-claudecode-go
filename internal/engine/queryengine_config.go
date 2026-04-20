@@ -66,6 +66,14 @@ type QueryEngineConfig struct {
 	// JSONSchema, if non-nil, forces structured (JSON) output.
 	JSONSchema map[string]interface{}
 
+	// PersistSession enables session persistence (transcript recording).
+	// TS anchor: QueryEngine.ts:L556 (persistSession flag)
+	PersistSession bool
+
+	// SessionWriter is the durable storage backend for persisting messages.
+	// Only used when PersistSession is true.
+	SessionWriter SessionWriter
+
 	// Verbose enables debug logging.
 	Verbose bool
 
@@ -84,13 +92,79 @@ type QueryEngineConfig struct {
 
 	// HandleElicitation is called when an MCP tool requests user input.
 	HandleElicitation func(ctx context.Context, toolUseID, question string) (string, error)
+
+	// OrphanedPermission carries a permission result from a prior session
+	// that was not consumed before the session ended. Only processed once
+	// per engine lifetime. TS anchor: QueryEngine.ts:L157
+	OrphanedPermission *OrphanedPermission
+
+	// SnipReplay handles snip-boundary replay when HISTORY_SNIP is enabled.
+	// Returns nil if the message is not a snip boundary; otherwise returns
+	// the replayed snip result. TS anchor: QueryEngine.ts:L169-172
+	SnipReplay func(yieldedMsg *Message, store []*Message) *SnipReplayResult
+
+	// ── System init fields (P7.T3) ─────────────────────────────────────
+
+	// PermissionMode is the permission mode for this session (e.g. "default", "plan").
+	PermissionMode string
+	// APIKeySource describes how the API key was obtained (e.g. "env", "config").
+	APIKeySource string
+	// Skills is the list of discovered skills for this session.
+	Skills []SkillConfig
+	// Plugins is the list of loaded plugins.
+	Plugins []PluginConfig
+	// FastMode indicates whether fast mode is enabled.
+	FastMode *bool
+	// Betas is the list of active SDK beta features.
+	Betas []string
+	// OutputStyle is the output rendering style (e.g. "concise", "verbose").
+	OutputStyle string
+	// Version is the build version string.
+	Version string
 }
 
 // Command is a registered slash command that can be invoked by the user.
 type Command struct {
-	Name        string
-	Description string
-	Handler     func(ctx context.Context, args string) (string, error)
+	Name          string
+	Description   string
+	UserInvocable *bool // nil = true (default invocable)
+	Handler       func(ctx context.Context, args string) (string, error)
+}
+
+// IsUserInvocable returns true if the command is user-invocable.
+func (c Command) IsUserInvocable() bool {
+	return c.UserInvocable == nil || *c.UserInvocable
+}
+
+// SkillConfig describes a discovered skill.
+type SkillConfig struct {
+	Name          string
+	UserInvocable *bool // nil = true (default invocable)
+}
+
+// IsUserInvocable returns true if the skill is user-invocable.
+func (s SkillConfig) IsUserInvocable() bool {
+	return s.UserInvocable == nil || *s.UserInvocable
+}
+
+// PluginConfig describes a loaded plugin.
+type PluginConfig struct {
+	Name   string
+	Path   string
+	Source string
+}
+
+// OrphanedPermission carries a permission result from a prior session.
+// TS anchor: types/textInputTypes.ts:L384-387
+type OrphanedPermission struct {
+	PermissionResult *PermissionResult
+	AssistantMessage *Message
+}
+
+// SnipReplayResult is the output of a snip-boundary replay.
+type SnipReplayResult struct {
+	Messages []*Message
+	Executed bool
 }
 
 // MCPClientConnection describes a connected MCP server.

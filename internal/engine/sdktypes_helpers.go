@@ -13,35 +13,35 @@ func NewSDKUUID() string {
 func NewSDKResultSuccess(sessionID string, result string, durationMs, durationAPIMs, numTurns int, totalCostUSD float64, usage interface{}, stopReason string) *SDKResultMessage {
 	sr := stopReason
 	return &SDKResultMessage{
-		Type:         SDKMsgResult,
-		Subtype:      SDKResultSuccess,
-		DurationMs:   durationMs,
+		Type:          SDKMsgResult,
+		Subtype:       SDKResultSuccess,
+		DurationMs:    durationMs,
 		DurationAPIMs: durationAPIMs,
-		IsError:      false,
-		NumTurns:     numTurns,
-		Result:       result,
-		StopReason:   &sr,
-		TotalCostUSD: totalCostUSD,
-		Usage:        usage,
-		UUID:         NewSDKUUID(),
-		SessionID:    sessionID,
+		IsError:       false,
+		NumTurns:      numTurns,
+		Result:        result,
+		StopReason:    &sr,
+		TotalCostUSD:  totalCostUSD,
+		Usage:         usage,
+		UUID:          NewSDKUUID(),
+		SessionID:     sessionID,
 	}
 }
 
 // NewSDKResultError creates an error result message.
 func NewSDKResultError(sessionID string, subtype SDKResultSubtype, errors []string, durationMs, durationAPIMs, numTurns int, totalCostUSD float64, usage interface{}) *SDKResultMessage {
 	return &SDKResultMessage{
-		Type:         SDKMsgResult,
-		Subtype:      subtype,
-		DurationMs:   durationMs,
+		Type:          SDKMsgResult,
+		Subtype:       subtype,
+		DurationMs:    durationMs,
 		DurationAPIMs: durationAPIMs,
-		IsError:      true,
-		NumTurns:     numTurns,
-		TotalCostUSD: totalCostUSD,
-		Usage:        usage,
-		Errors:       errors,
-		UUID:         NewSDKUUID(),
-		SessionID:    sessionID,
+		IsError:       true,
+		NumTurns:      numTurns,
+		TotalCostUSD:  totalCostUSD,
+		Usage:         usage,
+		Errors:        errors,
+		UUID:          NewSDKUUID(),
+		SessionID:     sessionID,
 	}
 }
 
@@ -140,6 +140,53 @@ func NewSDKToolProgress(sessionID, toolUseID, toolName string, elapsedSecs float
 		ToolUseID:       toolUseID,
 		ToolName:        toolName,
 		ElapsedTimeSecs: elapsedSecs,
+		UUID:            NewSDKUUID(),
+		SessionID:       sessionID,
+	}
+}
+
+// ── P7.T1 constructors for TS-aligned message types ─────────────────────
+
+// NewSDKAssistantTurn creates an assistant turn message.
+func NewSDKAssistantTurn(sessionID string, apiMessage interface{}, parentToolUseID *string) *SDKAssistantTurnMessage {
+	return &SDKAssistantTurnMessage{
+		Type:            SDKMsgAssistant,
+		Message:         apiMessage,
+		ParentToolUseID: parentToolUseID,
+		UUID:            NewSDKUUID(),
+		SessionID:       sessionID,
+	}
+}
+
+// NewSDKUserTurn creates a user turn message.
+func NewSDKUserTurn(sessionID string, apiMessage interface{}, parentToolUseID *string) *SDKUserTurnMessage {
+	return &SDKUserTurnMessage{
+		Type:            SDKMsgUser,
+		Message:         apiMessage,
+		ParentToolUseID: parentToolUseID,
+		UUID:            NewSDKUUID(),
+		SessionID:       sessionID,
+	}
+}
+
+// NewSDKUserReplay creates a user replay message for session restore.
+func NewSDKUserReplay(sessionID, msgUUID string, apiMessage interface{}, parentToolUseID *string) *SDKUserReplayMessage {
+	return &SDKUserReplayMessage{
+		Type:            SDKMsgUser,
+		Message:         apiMessage,
+		ParentToolUseID: parentToolUseID,
+		UUID:            msgUUID,
+		SessionID:       sessionID,
+		IsReplay:        true,
+	}
+}
+
+// NewSDKStreamEvent creates a stream event message.
+func NewSDKStreamEvent(sessionID string, event interface{}, parentToolUseID *string) *SDKStreamEventMessage {
+	return &SDKStreamEventMessage{
+		Type:            SDKMsgStreamEvent,
+		Event:           event,
+		ParentToolUseID: parentToolUseID,
 		UUID:            NewSDKUUID(),
 		SessionID:       sessionID,
 	}

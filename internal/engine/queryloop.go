@@ -192,43 +192,78 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 		ls.turnCount++
 		e.session.IncrTurn()
 
+		// Increment query chain tracking. TS anchor: query.ts:L346-363
+		ls.queryTracking = IncrementQueryTracking(&ls.queryTracking)
+
+		// Increment auto-compact turn counter. TS anchor: query.ts:L341-344
+		if ls.autoCompactTracking != nil {
+			ls.autoCompactTracking.TurnCounter++
+		}
+
 		// Check abort.
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 
-		// ── 5. Auto-compact using real token budget from EventUsage ───────
-		if !qcfg.DisableCompaction && ls.tokenBudget.ShouldCompact() {
-			slog.Info("queryloop: auto-compact triggered",
-				slog.Int("turn", ls.turnCount),
-				slog.String("session", e.cfg.SessionID),
-				slog.Float64("usage_frac", ls.tokenBudget.UsageFraction()))
+		// ── 5. Compression pipeline (tool result budget → snip → micro → auto) ──
+		// Aligned with TS query.ts:L366-530. Replaces the previous ad-hoc
+		// compaction with the full 5-step pipeline.
+		if !qcfg.DisableCompaction {
 			// Fire PreCompact hook.
 			if e.hookExecutor != nil && e.hookExecutor.HasHooksFor(hooks.EventPreCompact) {
 				e.hookExecutor.RunSync(ctx, hooks.EventPreCompact, &hooks.HookInput{})
 			}
-			emitSystemMessage(out, "Compacting conversation to free context space…")
-			compacted, _, err := CompactMessages(ctx, e.caller, ls.messages, effModel)
-			if err != nil {
-				slog.Warn("queryloop: auto-compact failed", slog.Any("err", err))
-			} else {
-				ls.messages = compacted
-				ls.tokenBudget.InputTokens = 0 // reset after compact
+
+			cpCfg := CompressionPipelineConfig{
+				QuerySource:       params.Source,
+				Flags:             e.featureFlags(),
+				Model:             effModel,
+				ContextWindowSize: effMaxTokens,
 			}
+			cpResult, cpErr := RunCompressionPipeline(ctx, ls.messages, e.caller, &qdeps, cpCfg)
+			if cpErr != nil {
+				slog.Warn("queryloop: compression pipeline failed", slog.Any("err", cpErr))
+			} else {
+				ls.messages = cpResult.Messages
+				if cpResult.CompactionResult != nil {
+					ls.tokenBudget.InputTokens = 0 // reset after compact
+					emitSystemMessage(out, "Compacting conversation to free context space…")
+					// Update auto-compact tracking.
+					if ls.autoCompactTracking == nil {
+						ls.autoCompactTracking = &AutoCompactTrackingState{}
+					}
+					ls.autoCompactTracking.Compacted = true
+					ls.autoCompactTracking.TurnCounter = 0
+					// Emit compact boundary event.
+					for _, bm := range cpResult.CompactBoundaryMessages {
+						out <- &StreamEvent{
+							Type: EventCompactBoundary,
+							CompactInfo: &CompactBoundaryData{
+								Summary: bm.Content[0].Text,
+							},
+						}
+					}
+				}
+				if cpResult.SnipBoundaryMessage != nil {
+					out <- &StreamEvent{
+						Type: EventCompactBoundary,
+						CompactInfo: &CompactBoundaryData{
+							Summary:     "Older conversation history was snipped",
+							TokensFreed: cpResult.SnipTokensFreed,
+						},
+					}
+				}
+			}
+
 			// Fire PostCompact hook.
 			if e.hookExecutor != nil && e.hookExecutor.HasHooksFor(hooks.EventPostCompact) {
 				e.hookExecutor.RunSync(ctx, hooks.EventPostCompact, &hooks.HookInput{})
 			}
-		} else if !qcfg.DisableCompaction && effMaxTokens > 0 {
-			// Fallback: estimate-based warning when real counts are not yet available.
+		} else if effMaxTokens > 0 {
+			// Fallback: estimate-based warning when compaction is disabled.
 			tokenEst := EstimateTokens(ls.messages)
 			ratio := float64(tokenEst) / float64(effMaxTokens)
-			if ratio >= 0.95 {
-				emitSystemMessage(out, "Context window is nearly full. Triggering compaction…")
-				if compacted, _, err := CompactMessages(ctx, e.caller, ls.messages, effModel); err == nil {
-					ls.messages = compacted
-				}
-			} else if ratio >= WarningFraction {
+			if ratio >= WarningFraction {
 				emitSystemMessage(out, "Context window is getting full. Consider using /compact.")
 			}
 		}
@@ -239,15 +274,29 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 		if ls.maxOutputTokensOverride != nil {
 			effectiveMaxTokens = *ls.maxOutputTokensOverride
 		}
+
+		// ── 5b. Inject per-tool prompts into system prompt. TS: query.ts:L638-656
+		allTools := e.toolsWithExtra(qdeps.ExtraTools)
+		toolPromptCtx := ToolPromptContext{
+			CWD:              e.cfg.WorkDir,
+			TurnCount:        ls.turnCount,
+			Model:            effModel,
+			IsNonInteractive: e.cfg.NonInteractive,
+		}
+		sysParts := InjectToolPrompts(ls.promptResult.Parts, allTools, toolPromptCtx)
+
 		callParams := CallParams{
 			Model:             effModel,
 			MaxTokens:         effectiveMaxTokens,
 			ThinkingBudget:    effThinking,
 			SystemPrompt:      ls.promptResult.Text,
-			SystemPromptParts: ls.promptResult.Parts,
+			SystemPromptParts: sysParts,
 			Messages:          ls.messages,
 			Tools:             toolDefs,
 			UsePromptCache:    true,
+			QueryTracking:     &ls.queryTracking,
+			QuerySource:       params.Source,
+			FallbackModel:     qcfg.FallbackModel,
 		}
 
 		eventCh, err := e.caller.CallModel(ctx, callParams)
@@ -475,6 +524,16 @@ func runQueryLoop(ctx context.Context, e *Engine, params QueryParams, out chan<-
 		}
 	}
 
+	// Emit max_turns_reached attachment before terminating.
+	// TS anchor: query.ts:L1704-1711
+	out <- &StreamEvent{
+		Type: EventAttachment,
+		Attachment: &AttachmentData{
+			Type:      "max_turns_reached",
+			MaxTurns:  effMaxTurns,
+			TurnCount: ls.turnCount + 1,
+		},
+	}
 	loopErr = fmt.Errorf("exceeded maximum turn limit (%d)", effMaxTurns)
 	return loopErr
 }
@@ -514,6 +573,10 @@ func buildSystemPromptIntegratedWithDeps(e *Engine, memoryContent string, deps Q
 // drainProviderStream reads events from the provider channel, forwards
 // text/thinking/usage events to `out`, accumulates the assistant message,
 // and returns any pending tool calls.
+//
+// When a model fallback event is received (EventModelFallback), the function
+// tombstones orphaned assistant messages and clears accumulated state,
+// mirroring TS query.ts:L708-787.
 func drainProviderStream(
 	ctx context.Context,
 	eventCh <-chan *StreamEvent,
@@ -528,6 +591,8 @@ func drainProviderStream(
 	}
 
 	var toolCalls []*pendingToolCall
+	// Accumulated assistant messages across fallback attempts.
+	var assistantMessages []*Message
 	// map toolID -> accumulated input JSON
 	toolInputBuf := make(map[string]*json.RawMessage)
 
@@ -548,6 +613,10 @@ func drainProviderStream(
 			}
 			switch ev.Type {
 			case EventTextDelta:
+				// Track assistant msg for potential fallback tombstoning.
+				if len(assistantMsg.Content) == 0 {
+					assistantMessages = append(assistantMessages, assistantMsg)
+				}
 				// Accumulate text for the assistant message.
 				appendTextToMessage(assistantMsg, ev.Text)
 				// Forward to caller.
@@ -596,6 +665,30 @@ func drainProviderStream(
 						budget.CacheWriteTokens += ev.Usage.CacheCreationInputTokens
 					}
 				}
+				out <- ev
+
+			case EventModelFallback:
+				// Provider switched to fallback model mid-stream.
+				// Tombstone orphaned assistant messages so UI/transcript can discard them.
+				// TS anchor: query.ts:L712-728
+				for _, msg := range assistantMessages {
+					out <- &StreamEvent{
+						Type: EventTombstone,
+						Tombstone: &TombstoneData{
+							MessageUUID: msg.ID,
+							Reason:      "model_fallback",
+						},
+					}
+				}
+				// Clear accumulated state.
+				assistantMessages = nil
+				assistantMsg = &Message{
+					ID:   uuid.New().String(),
+					Role: RoleAssistant,
+				}
+				toolCalls = nil
+				toolInputBuf = make(map[string]*json.RawMessage)
+				// Forward the fallback event so callers can display a system message.
 				out <- ev
 
 			case EventError:

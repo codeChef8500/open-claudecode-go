@@ -149,17 +149,16 @@ func TestQueryEngine_E2E_UsageTracking(t *testing.T) {
 	}
 
 	// Manually accumulate (simulating stream events).
-	qe.totalUsage = accumulateUsageStats(qe.totalUsage, &UsageStats{
-		InputTokens:  1000,
-		OutputTokens: 500,
-		CostUSD:      0.01,
-	})
+	msgUsage := EmptyUsage()
+	msgUsage.InputTokens = 1000
+	msgUsage.OutputTokens = 500
+	qe.totalUsage = AccumulateUsage(qe.totalUsage, msgUsage)
 
 	if qe.totalUsage.InputTokens != 1000 {
 		t.Errorf("input = %d, want 1000", qe.totalUsage.InputTokens)
 	}
-	if qe.totalUsage.CostUSD != 0.01 {
-		t.Errorf("cost = %f, want 0.01", qe.totalUsage.CostUSD)
+	if qe.totalUsage.OutputTokens != 500 {
+		t.Errorf("output = %d, want 500", qe.totalUsage.OutputTokens)
 	}
 }
 

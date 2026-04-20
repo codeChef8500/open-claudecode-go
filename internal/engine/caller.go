@@ -41,6 +41,12 @@ type CallParams struct {
 	StopSequences     []string
 	JSONSchema        interface{} // json.RawMessage or nil
 	FallbackModel     string
+
+	// ── TS-aligned query metadata (query.ts:L659-707) ─────────────────
+	QueryTracking       *QueryTracking // chain tracking for analytics
+	QuerySource         QuerySource    // origin of this query
+	AgentID             string         // subagent ID (empty for main thread)
+	TaskBudgetRemaining *int           // remaining task budget after compaction
 }
 
 // ToolDefinition is the wire format for a tool spec sent to the LLM.

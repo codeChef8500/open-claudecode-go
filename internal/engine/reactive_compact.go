@@ -72,6 +72,17 @@ func (rc *ReactiveCompacter) HandlePromptTooLong(
 			})
 		}
 
+		// Stage 0: Context collapse — drain oversized tool results first.
+		// TS anchor: services/contextCollapse/index.ts:recoverFromOverflow
+		if attempt == 1 {
+			cr := RecoverFromOverflow(current)
+			if cr.Committed > 0 {
+				current = cr.Messages
+				slog.Info("reactive compact: context collapse freed entries",
+					slog.Int("committed", cr.Committed))
+			}
+		}
+
 		// Stage 1: Strip images (cheap, often frees significant tokens).
 		if rc.cfg.StripImages && attempt == 1 {
 			current = stripImageBlocks(current)

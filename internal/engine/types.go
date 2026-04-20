@@ -3,6 +3,8 @@ package engine
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/wall-ai/agent-engine/internal/util"
 )
 
 // StreamEventType enumerates all event types emitted by the engine.
@@ -26,21 +28,24 @@ const (
 	EventAttachment      StreamEventType = "attachment"
 	EventCompactBoundary StreamEventType = "compact_boundary"
 	EventCommandResult   StreamEventType = "command_result"
+	EventModelFallback   StreamEventType = "model_fallback"
 )
 
 // StreamEvent is produced by the engine and consumed by SDK callers or HTTP SSE.
 type StreamEvent struct {
-	Type      StreamEventType `json:"type"`
-	Text      string          `json:"text,omitempty"`
-	ToolName  string          `json:"tool_name,omitempty"`
-	ToolID    string          `json:"tool_id,omitempty"`
-	ToolInput interface{}     `json:"tool_input,omitempty"`
-	Result    string          `json:"result,omitempty"`
-	IsError   bool            `json:"is_error,omitempty"`
-	Thinking  string          `json:"thinking,omitempty"`
-	Usage     *UsageStats     `json:"usage,omitempty"`
-	Error     string          `json:"error,omitempty"`
-	SessionID string          `json:"session_id,omitempty"`
+	Type       StreamEventType `json:"type"`
+	EventType  string          `json:"event_type,omitempty"` // "message_start", "message_delta", "message_stop", etc.
+	Text       string          `json:"text,omitempty"`
+	ToolName   string          `json:"tool_name,omitempty"`
+	ToolID     string          `json:"tool_id,omitempty"`
+	ToolInput  interface{}     `json:"tool_input,omitempty"`
+	Result     string          `json:"result,omitempty"`
+	IsError    bool            `json:"is_error,omitempty"`
+	Thinking   string          `json:"thinking,omitempty"`
+	Usage      *UsageStats     `json:"usage,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	StopReason string          `json:"stop_reason,omitempty"` // from message_delta
+	SessionID  string          `json:"session_id,omitempty"`
 
 	// Extended fields for richer event types.
 	Progress       *ProgressData        `json:"progress,omitempty"`
@@ -50,6 +55,10 @@ type StreamEvent struct {
 	CompactInfo    *CompactBoundaryData `json:"compact_info,omitempty"`
 	MessageUUID    string               `json:"message_uuid,omitempty"`
 	Level          string               `json:"level,omitempty"` // info, warning, error
+
+	// Model fallback fields.
+	FallbackModel string `json:"fallback_model,omitempty"`
+	OriginalModel string `json:"original_model,omitempty"`
 }
 
 // UsageStats carries token and cost information from an LLM response.
@@ -101,13 +110,20 @@ type WebFetchProgressData struct {
 
 // AttachmentData carries metadata for an attachment message (memory, hook output, etc.).
 type AttachmentData struct {
-	Type        string `json:"type"` // "memory", "hook_output", "hook_error", "hook_blocking_error", "hook_cancelled", "hook_permission_decision", "skill", "file_change"
+	Type        string `json:"type"` // "memory", "hook_output", "hook_error", "hook_blocking_error", "hook_cancelled", "hook_permission_decision", "skill", "file_change", "structured_output", "max_turns_reached", "queued_command"
 	Content     string `json:"content,omitempty"`
 	ToolUseID   string `json:"tool_use_id,omitempty"`
 	HookName    string `json:"hook_name,omitempty"`
 	HookEvent   string `json:"hook_event,omitempty"`
 	FilePath    string `json:"file_path,omitempty"`
 	MemoryTitle string `json:"memory_title,omitempty"`
+
+	// ── Extended attachment fields (P8.T4) ─────────────────────────────
+	Data       interface{} `json:"data,omitempty"`        // structured_output payload
+	Prompt     string      `json:"prompt,omitempty"`      // queued_command prompt text
+	SourceUUID string      `json:"source_uuid,omitempty"` // queued_command source UUID
+	TurnCount  int         `json:"turn_count,omitempty"`  // max_turns_reached current count
+	MaxTurns   int         `json:"max_turns,omitempty"`   // max_turns_reached limit
 }
 
 // TombstoneData marks a message that should be removed from UI and transcript.
@@ -130,6 +146,7 @@ type CompactBoundaryData struct {
 	TokensRemaining  int    `json:"tokens_remaining,omitempty"`
 	Direction        string `json:"direction,omitempty"` // "forward", "backward"
 	SummaryMessageID string `json:"summary_message_id,omitempty"`
+	Summary          string `json:"summary,omitempty"` // human-readable summary of compaction
 }
 
 // MessageRole mirrors the Anthropic / OpenAI role conventions.
@@ -264,12 +281,22 @@ type Message struct {
 	Model     string      `json:"model,omitempty"`
 
 	// ── System/error metadata ────────────────────────────────────────────
+	Subtype  string             `json:"subtype,omitempty"` // system message subtype: "compact_boundary", "api_error", "local_command", etc.
 	Level    SystemMessageLevel `json:"level,omitempty"`
 	APIError string             `json:"api_error,omitempty"` // "invalid_request", "overloaded", etc.
 	Error    string             `json:"error,omitempty"`
 
+	// ── API retry metadata (subtype="api_error") ───────────────────────
+	RetryAttempt int    `json:"retry_attempt,omitempty"`
+	MaxRetries   int    `json:"max_retries,omitempty"`
+	RetryInMs    int    `json:"retry_in_ms,omitempty"`
+	ErrorStatus  int    `json:"error_status,omitempty"`
+	ErrorMessage string `json:"error_message,omitempty"`
+
 	// ── Compact metadata ────────────────────────────────────────────────
-	IsCompactSummary bool `json:"is_compact_summary,omitempty"`
+	IsCompactSummary  bool             `json:"is_compact_summary,omitempty"`
+	CompactMetadata   *CompactMetadata `json:"compact_metadata,omitempty"`
+	IsApiErrorMessage bool             `json:"is_api_error_message,omitempty"`
 
 	// ── Progress metadata ───────────────────────────────────────────────
 	ProgressData *ProgressData `json:"progress_data,omitempty"`
@@ -281,7 +308,9 @@ type Message struct {
 	TombstoneFor string `json:"tombstone_for,omitempty"` // UUID of message to remove
 
 	// ── ToolUseSummary metadata ─────────────────────────────────────────
-	ToolUseSummary *ToolUseSummaryData `json:"tool_use_summary,omitempty"`
+	ToolUseSummary      *ToolUseSummaryData `json:"tool_use_summary,omitempty"`
+	Summary             string              `json:"summary,omitempty"`
+	PrecedingToolUseIDs []string            `json:"preceding_tool_use_ids,omitempty"`
 
 	// ── Origin tracking ─────────────────────────────────────────────────
 	Origin     MessageOrigin `json:"origin,omitempty"`
@@ -376,6 +405,9 @@ type EngineConfig struct {
 	// Used by agents that have their own specialized prompts and don't need
 	// project-level instructions.
 	OmitClaudeMd bool `json:"omit_claude_md,omitempty"`
+
+	// FeatureFlags is the feature flag store for runtime gate checks.
+	FeatureFlags *util.FeatureFlagStore `json:"-"`
 }
 
 // QuerySource describes the origin of a query (for compaction skip decisions).

@@ -12,6 +12,7 @@ import (
 	"github.com/wall-ai/agent-engine/internal/command"
 	"github.com/wall-ai/agent-engine/internal/hooks"
 	"github.com/wall-ai/agent-engine/internal/state"
+	"github.com/wall-ai/agent-engine/internal/util"
 )
 
 // Engine manages a single conversation session with an LLM.
@@ -129,6 +130,11 @@ func (e *Engine) SetHookExecutor(he *hooks.Executor) { e.hookExecutor = he }
 
 // SetCommandRegistry installs the slash command registry for interception.
 func (e *Engine) SetCommandRegistry(r *command.Registry) { e.commandRegistry = r }
+
+// featureFlags returns the engine's feature flag store, or nil if not configured.
+func (e *Engine) featureFlags() *util.FeatureFlagStore {
+	return e.cfg.FeatureFlags
+}
 
 // SetAskPermission installs the interactive permission callback.
 // This is called by tools that require user approval (e.g. file writes).
@@ -365,6 +371,14 @@ func (e *Engine) toolDefsWithExtra(extra []Tool) []ToolDefinition {
 		}
 	}
 	return defs
+}
+
+// toolsWithExtra returns all registered tools plus any extra per-query tools.
+func (e *Engine) toolsWithExtra(extra []Tool) []Tool {
+	all := make([]Tool, len(e.tools))
+	copy(all, e.tools)
+	all = append(all, extra...)
+	return all
 }
 
 // emitSystemMessage sends a non-LLM status update to the caller.

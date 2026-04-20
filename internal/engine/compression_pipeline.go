@@ -89,6 +89,16 @@ func RunCompressionPipeline(
 		}
 	}
 
+	// ── Step 3b: context collapse — collapse oversized tool results ────
+	// TS anchor: services/contextCollapse/index.ts:applyCollapsesIfNeeded
+	collapseResult := ApplyCollapsesIfNeeded(msgs)
+	if collapseResult.CollapsedCount > 0 {
+		msgs = collapseResult.Messages
+		slog.Debug("compression_pipeline: context collapse",
+			slog.Int("collapsed", collapseResult.CollapsedCount),
+			slog.Int("tokens_freed", collapseResult.TokensFreed))
+	}
+
 	// ── Step 4: microcompact ─────────────────────────────────────────────
 	if cfg.Flags != nil && cfg.Flags.IsEnabled(util.FlagMicroCompact) {
 		mcCfg := MicrocompactConfig{
